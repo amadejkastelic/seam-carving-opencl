@@ -22,6 +22,8 @@ int main() {
     unsigned *energy;
     unsigned width, height, pitchGray, pitchRGB, imageSize, globalWidth, globalHeight;
     int *backtrack, i;
+    double elapsedCPU;
+    struct timespec start{}, finish{};
 
     // run tests
     /*if (test() != 0) {
@@ -57,6 +59,9 @@ int main() {
     FreeImage_Unload(imageBitmapGrey);
     FreeImage_Unload(imageBitmap);
 
+    // start measuring time
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
     // find and delete seams (width)
     for (i = 0; i < (globalWidth - DESIRED_WIDTH); i++) {
         sobelCPU(imageGray, energy, width, height);
@@ -89,12 +94,21 @@ int main() {
         height--;
     }
 
+    // stop
+    clock_gettime(CLOCK_MONOTONIC, &finish);
+    elapsedCPU = (finish.tv_sec - start.tv_sec);
+    elapsedCPU += (finish.tv_nsec - start.tv_nsec) / 1000000000.0;
+
     // rotate image back and save it
     FIBITMAP *imageOutBitmap = FreeImage_ConvertFromRawBits(imageRGB, height,
             width, height*3, 24, 0xFF, 0xFF, 0xFF, TRUE);
     imageOutBitmap = FreeImage_Rotate(imageOutBitmap, -90, NULL);
     FreeImage_Save(FIF_PNG, imageOutBitmap, "../cpu_cut_image.png", 0);
     FreeImage_Unload(imageOutBitmap);
+
+    // print results
+    printf("Resized image from %dx%d to %dx%d.\n", globalWidth, globalHeight, width, height);
+    printf("Calculation time: %f.", elapsedCPU);
 
     // free memory
     free(imageGray);
