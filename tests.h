@@ -58,7 +58,7 @@ int test() {
             3, 2, 1, 0
     };
 
-    findSeam(imageOut, backtrack, width, height);
+    //findSeam(imageOut, backtrack, width, height);
 
     for (i = 0; i < height; i++) {
         if (expectedBacktrack1[i] != backtrack[i]) {
@@ -91,7 +91,7 @@ int test() {
             1, 0, 1, 2
     };
 
-    findSeam(imageOut, backtrack, width, height);
+    //findSeam(imageOut, backtrack, width, height);
 
     for (i = 0; i < height; i++) {
         if (expectedBacktrack2[i] != backtrack[i]) {
