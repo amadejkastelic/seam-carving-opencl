@@ -68,7 +68,7 @@ int test() {
         }
     }
 
-    deleteSeam(imageOut, backtrack, width, height);
+    //deleteSeam(imageOut, backtrack, width, height);
     width--;
     imageSize = width * height;
 
@@ -101,7 +101,7 @@ int test() {
         }
     }
 
-    deleteSeam(imageOut, backtrack, width, height);
+    //deleteSeam(imageOut, backtrack, width, height);
     width--;
     imageSize = width * height;
 

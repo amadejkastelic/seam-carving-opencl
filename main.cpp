@@ -14,14 +14,14 @@
 #define MAX_SOURCE_SIZE	16384
 
 // wanted image size
-#define WANTED_WIDTH 800;
-#define WANTED_HEIGHT 600;
+#define DESIRED_WIDTH 800
+#define DESIRED_HEIGHT 600
 
 int main() {
-    unsigned char *imageIn;
-    unsigned *imageOut;
-    unsigned width, height, pitch, imageSize;
-    int *backtrack;
+    unsigned char *imageGray, *imageRGB;
+    unsigned *energy;
+    unsigned width, height, pitchGray, pitchRGB, imageSize, globalWidth, globalHeight;
+    int *backtrack, i;
 
     // run tests
     /*if (test() != 0) {
@@ -33,47 +33,79 @@ int main() {
     FIBITMAP *imageBitmapGrey = FreeImage_ConvertToGreyscale(imageBitmap);
     width = FreeImage_GetWidth(imageBitmapGrey);
     height = FreeImage_GetHeight(imageBitmapGrey);
-    pitch = FreeImage_GetPitch(imageBitmapGrey);
+    pitchGray = FreeImage_GetPitch(imageBitmapGrey);
+    pitchRGB = FreeImage_GetPitch(imageBitmap);
     imageSize = height * width;
 
+    // save image size
+    globalWidth = width;
+    globalHeight = height;
+
     // memory allocation
-    imageIn = (unsigned char *) malloc(imageSize * sizeof(unsigned char));
-    imageOut = (unsigned *) malloc(imageSize * sizeof(unsigned));
+    imageGray = (unsigned char *) malloc(imageSize * sizeof(unsigned char));
+    imageRGB = (unsigned char *) malloc(3 * imageSize * sizeof(unsigned char));
+    energy = (unsigned *) malloc(imageSize * sizeof(unsigned));
     backtrack = (int *) malloc(height * sizeof(int));
 
-    // load image to memory
-    FreeImage_ConvertToRawBits(imageIn, imageBitmapGrey, pitch, 8,
+    // load image to memory (gray for sobel and rgb for carving)
+    FreeImage_ConvertToRawBits(imageGray, imageBitmapGrey, pitchGray, 8,
+            0xFF, 0xFF, 0xFF, TRUE);
+    FreeImage_ConvertToRawBits(imageRGB, imageBitmap, pitchRGB, 24,
             0xFF, 0xFF, 0xFF, TRUE);
 
     // remove read image
     FreeImage_Unload(imageBitmapGrey);
     FreeImage_Unload(imageBitmap);
 
-    // find and delete seams
-    for (int i = 0; i < 600; i++) {
-        sobelCPU(imageIn, imageOut, width, height);
-        cumulativeCPU(imageOut, width, height);
-        findSeam(imageOut, backtrack, width, height);
-        deleteSeam(imageOut, backtrack, width, height);
-        deleteSeamImage(imageIn, backtrack, width, height);
+    // find and delete seams (width)
+    for (i = 0; i < (globalWidth - DESIRED_WIDTH); i++) {
+        sobelCPU(imageGray, energy, width, height);
+        cumulativeCPU(energy, width, height);
+        findSeam(energy, backtrack, width, height);
+        deleteSeam(imageGray, imageRGB, backtrack, width, height);
         width--;
     }
 
-    // save new image
-    FIBITMAP *imageOutBitmap = FreeImage_ConvertFromRawBits(imageIn, width,
+    // rotate images
+    FIBITMAP *rotatedGrayImage = FreeImage_ConvertFromRawBits(imageGray, width,
             height, width, 8, 0xFF, 0xFF, 0xFF, TRUE);
+    FIBITMAP *rotatedRBGImage = FreeImage_ConvertFromRawBits(imageRGB, width,
+            height, width*3, 24, 0xFF, 0xFF, 0xFF, TRUE);
+
+    rotatedGrayImage = FreeImage_Rotate(rotatedGrayImage, 90, NULL);
+    rotatedRBGImage = FreeImage_Rotate(rotatedRBGImage, 90, NULL);
+
+    FreeImage_ConvertToRawBits(imageGray, rotatedGrayImage, height, 8,
+            0xFF, 0xFF, 0xFF, TRUE);
+    FreeImage_ConvertToRawBits(imageRGB, rotatedRBGImage, height*3, 24,
+            0xFF, 0xFF, 0xFF, TRUE);
+
+    // find and delete seams (height)
+    for (i = 0; i < (globalHeight - DESIRED_HEIGHT); i++) {
+        sobelCPU(imageGray, energy, height, width);
+        cumulativeCPU(energy, height, width);
+        findSeam(energy, backtrack, height, width);
+        deleteSeam(imageGray, imageRGB, backtrack, height, width);
+        height--;
+    }
+
+    // rotate image back and save it
+    FIBITMAP *imageOutBitmap = FreeImage_ConvertFromRawBits(imageRGB, height,
+            width, height*3, 24, 0xFF, 0xFF, 0xFF, TRUE);
+    imageOutBitmap = FreeImage_Rotate(imageOutBitmap, -90, NULL);
     FreeImage_Save(FIF_PNG, imageOutBitmap, "../cpu_cut_image.png", 0);
     FreeImage_Unload(imageOutBitmap);
 
     // free memory
-    free(imageIn);
-    free(imageOut);
+    free(imageGray);
+    free(imageRGB);
+    free(energy);
+    free(backtrack);
 
     return 0;
 }
 
-void sobelCPU(unsigned char *imageIn, unsigned *imageOut,
-        int width, int height) {
+void sobelCPU(unsigned char *imageIn, unsigned *imageOut, int width, int height) {
     int i, j;
     int Gx, Gy;
     unsigned tempPixel;
@@ -150,35 +182,31 @@ void findSeam(unsigned *image, int *backtrack,
     }
 }
 
-void deleteSeam(unsigned *image, int *backtrack, int width, int height) {
-    int i, j, imageSize, index;
+void deleteSeam(unsigned char *gray, unsigned char *RGB, const int *backtrack, int width, int height) {
+    int i, j, k, index, chunk;
 
-    imageSize = width * height;
+    chunk = 0; // number of deleted pixels
     for (i = 0; i < height; i++) {
-        index = i * width;
-        for (j = index + backtrack[i]-i; j < imageSize-i-1; j++) {
-            image[j] = image[j + 1];
+        for (j = 0; j < width; j++) {
+            if (j == backtrack[i]) {
+                chunk++;
+                continue;
+            }
+
+            // if no pixels deleted yet
+            if (chunk == 0) {
+                continue;
+            }
+
+            // move pixel back for chunk size (gray image)
+            index = i*width + j; // index of current pixel
+            gray[index - chunk] = gray[index];
+
+            // move pixel back for chunk size (RGB image)
+            index = i * (width*3) + (j*3); // index of R in current pixel
+            for (k = index; k < index + 3; k++) {
+                RGB[k - (chunk*3)] = RGB[k];
+            }
         }
-    }
-}
-
-void deleteSeamImage(unsigned char *image, int *backtrack, int width,
-        int height) {
-    int i, j, imageSize, index;
-
-    imageSize = width * height;
-    for (i = 0; i < height; i++) {
-        index = i * width;
-        for (j = index + backtrack[i]-i; j < imageSize-i-1; j++) {
-            image[j] = image[j + 1];
-        }
-    }
-}
-
-void colorSeam(unsigned char *image, int *backtrack, int width, int height) {
-    int i;
-
-    for (i = 0; i < height; i++) {
-        image[i*width + backtrack[i]] = 0;
     }
 }

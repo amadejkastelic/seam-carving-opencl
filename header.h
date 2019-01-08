@@ -62,15 +62,10 @@ void sobelCPU(unsigned char *imageIn, unsigned *imageOut,
 
 void cumulativeCPU(unsigned *image, int width, int height);
 
-void findSeam(unsigned *image, int *backtrack,
-              int width, int height);
+void findSeam(unsigned *image, int *backtrack, int width, int height);
 
-void deleteSeam(unsigned *image, int *backtrack,
-                int width, int height);
+void deleteSeam(unsigned char *gray, unsigned char *RGB, const int *backtrack, int width, int height);
 
-void deleteSeamImage(unsigned char *image, int *backtrack,
-                int width, int height);
-
-void colorSeam(unsigned char *image, int *backtrack, int width, int height);
+void resizeImage(unsigned char *RGB, unsigned char *gray, int width, int height);
 
 #endif //SEMINAR_HEADER_H
