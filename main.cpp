@@ -1,21 +1,9 @@
-#define _CRT_SECURE_NO_WARNINGS
-#include <stdio.h>
-#include <stdlib.h>
-#include <CL/cl.h>
-#include <math.h>
-#include <time.h>
-#include <string.h>
-#include <limits.h>
-
-#include "FreeImage.h"
 #include "header.h"
-#include "tests.h"
 
 #define MAX_SOURCE_SIZE	16384
-
 // wanted image size
-#define DESIRED_WIDTH 800
-#define DESIRED_HEIGHT 600
+#define DESIRED_WIDTH 400
+#define DESIRED_HEIGHT 800
 
 int main() {
     unsigned char *imageGray, *imageRGB;
@@ -31,7 +19,7 @@ int main() {
     }*/
 
     // image reading
-    FIBITMAP *imageBitmap = FreeImage_Load(FIF_JPEG, "../image.jpg", 0);
+    FIBITMAP *imageBitmap = FreeImage_Load(FIF_JPEG, "../images/image.jpg", 0);
     FIBITMAP *imageBitmapGrey = FreeImage_ConvertToGreyscale(imageBitmap);
     width = FreeImage_GetWidth(imageBitmapGrey);
     height = FreeImage_GetHeight(imageBitmapGrey);
@@ -103,7 +91,7 @@ int main() {
     FIBITMAP *imageOutBitmap = FreeImage_ConvertFromRawBits(imageRGB, height,
             width, height*3, 24, 0xFF, 0xFF, 0xFF, TRUE);
     imageOutBitmap = FreeImage_Rotate(imageOutBitmap, -90, NULL);
-    FreeImage_Save(FIF_PNG, imageOutBitmap, "../cpu_cut_image.png", 0);
+    FreeImage_Save(FIF_PNG, imageOutBitmap, "../images/cpu_cut_image.png", 0);
     FreeImage_Unload(imageOutBitmap);
 
     // print results
@@ -166,17 +154,11 @@ void cumulativeCPU(unsigned *image, int width, int height) {
                 getPixel(image, width, height, i+1, j, UINT_MAX),
                 getPixel(image, width, height, i+1, j+1, UINT_MAX)
             );
-            /*if (temp >= 255) {
-                image[index] = 255;
-            } else {
-                image[index] = (unsigned char) temp;
-            }*/
         }
     }
 }
 
-void findSeam(unsigned *image, int *backtrack,
-        int width, int height) {
+void findSeam(unsigned *image, int *backtrack, int width, int height) {
     int i, temp;
 
     // find min in top row

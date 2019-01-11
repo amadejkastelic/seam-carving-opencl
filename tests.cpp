@@ -2,8 +2,7 @@
 // Created by amadej on 29. 12. 18.
 //
 
-#ifndef SEMINAR_TEST_H
-#define SEMINAR_TEST_H
+#include "header.h"
 
 int test() {
     /**
@@ -121,5 +120,3 @@ int test() {
     printf("All tests passed (3/3).\n");
     return 0;
 }
-
-#endif //SEMINAR_TEST_H
