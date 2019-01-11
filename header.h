@@ -1,11 +1,11 @@
 //
 // Created by amadej on 23. 12. 18.
+// Headers
 //
 
 #ifndef SEMINAR_HEADER_H
 #define SEMINAR_HEADER_H
 
-#define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <stdlib.h>
 #include <CL/cl.h>
@@ -13,8 +13,9 @@
 #include <time.h>
 #include <string.h>
 #include <limits.h>
-
 #include "FreeImage.h"
+
+#define _CRT_SECURE_NO_WARNINGS
 
 int min(unsigned x, unsigned y, unsigned z);
 
@@ -34,6 +35,8 @@ void findSeam(unsigned *image, int *backtrack, int width, int height);
 
 void deleteSeam(unsigned char *gray, unsigned char *RGB, const int *backtrack, int width, int height);
 
-void resizeImage(unsigned char *RGB, unsigned char *gray, int width, int height);
+void resizeImageSerial();
+
+void resizeImageParallel();
 
 #endif //SEMINAR_HEADER_H

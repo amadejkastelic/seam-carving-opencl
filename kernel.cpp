@@ -1,3 +1,8 @@
+//
+// Created by amadej on 29. 12. 18.
+// OpenCL kernel file
+//
+
 inline int getPixel(__global unsigned char *image, int width, int height, int y, int x) {
     if (x < 0 || x >= width)
         return 0;

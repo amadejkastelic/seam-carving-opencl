@@ -1,3 +1,8 @@
+//
+// Created by amadej on 29. 12. 18.
+// Utility functions
+//
+
 #include "header.h"
 
 int min(unsigned x, unsigned y, unsigned z) {
