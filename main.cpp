@@ -7,9 +7,7 @@
 #define MAX_SOURCE_SIZE	16384
 // wanted image size
 #define DESIRED_WIDTH 400
-#define DESIRED_HEIGHT 600
-// debug mode
-#define DEBUG 1
+#define DESIRED_HEIGHT 500
 
 int main() {
     // Parallel algorithm
@@ -534,7 +532,7 @@ void resizeImageSerial(const char *imagePath) {
     }*/
 
     // image reading
-    FIBITMAP *imageBitmap = FreeImage_Load(FIF_JPEG, "../images/image.jpg", 0);
+    FIBITMAP *imageBitmap = FreeImage_Load(FIF_JPEG, imagePath, 0);
     FIBITMAP *imageBitmapGray = FreeImage_ConvertToGreyscale(imageBitmap);
     width = FreeImage_GetWidth(imageBitmapGray);
     height = FreeImage_GetHeight(imageBitmapGray);
