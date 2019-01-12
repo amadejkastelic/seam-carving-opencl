@@ -39,4 +39,8 @@ void resizeImageSerial();
 
 void resizeImageParallel();
 
+void saveUnsignedImage(const unsigned int *image, int width, int height, const char *path);
+
+int nearestPower(int num);
+
 #endif //SEMINAR_HEADER_H

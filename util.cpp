@@ -13,8 +13,7 @@ int max(unsigned x, unsigned y, unsigned z) {
     return (x = (x >= y) ? x : y) >= z ? x : z;
 }
 
-unsigned getPixel(unsigned *image, int width, int height, int y, int x,
-                  unsigned edge) {
+unsigned getPixel(unsigned *image, int width, int height, int y, int x, unsigned edge) {
     if (x < 0 || x >= width) {
         return edge;
     }
@@ -26,8 +25,7 @@ unsigned getPixel(unsigned *image, int width, int height, int y, int x,
     return image[y*width + x];
 }
 
-unsigned getPixelImage(unsigned char *image, int width, int height,
-                       int y, int x, unsigned edge) {
+unsigned getPixelImage(unsigned char *image, int width, int height, int y, int x, unsigned edge) {
     if (x < 0 || x >= width) {
         return edge;
     }
@@ -39,8 +37,7 @@ unsigned getPixelImage(unsigned char *image, int width, int height,
     return image[y*width + x];
 }
 
-int indexOfMin(unsigned *image, int width, int height,
-               int y, int x, int len) {
+int indexOfMin(unsigned *image, int width, int height, int y, int x, int len) {
     int i, index;
     unsigned min, temp;
 
@@ -55,4 +52,33 @@ int indexOfMin(unsigned *image, int width, int height,
     }
 
     return index;
+}
+
+void saveUnsignedImage(const unsigned int *image, int width, int height, const char *path) {
+    int imageSize = width*height;
+
+    auto *temp = (unsigned char *) malloc(imageSize * sizeof(unsigned char));
+    for (int i = 0; i < imageSize; i++) {
+        temp[i] = (unsigned char) image[i];
+    }
+
+    FIBITMAP *imageOut = FreeImage_ConvertFromRawBits(temp, width,
+            height, width, 8, 0xFF, 0xFF, 0xFF, TRUE);
+    FreeImage_Save(FIF_PNG, imageOut, path, 0);
+    FreeImage_Unload(imageOut);
+
+    free(temp);
+}
+
+// source: https://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
+int nearestPower(int num) {
+    num--;
+    num |= num >> 1;
+    num |= num >> 2;
+    num |= num >> 4;
+    num |= num >> 8;
+    num |= num >> 16;
+    num++;
+
+    return num;
 }

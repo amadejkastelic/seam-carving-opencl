@@ -70,8 +70,7 @@ void findSeam(unsigned *image, int *backtrack, int width, int height) {
 
     // find seam
     for (i = 1; i < height; i++) {
-        backtrack[i] =
-                indexOfMin(image, width, height, i, backtrack[i-1]-1, 3);
+        backtrack[i] = indexOfMin(image, width, height, i, backtrack[i-1]-1, 3);
     }
 }
 

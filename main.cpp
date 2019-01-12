@@ -8,10 +8,12 @@
 // wanted image size
 #define DESIRED_WIDTH 400
 #define DESIRED_HEIGHT 800
+// debug mode
+#define DEBUG 1
 
 int main() {
     // Serial algorithm
-    // resizeImageSerial();
+    //resizeImageSerial();
 
     // Parallel algorithm
     resizeImageParallel();
@@ -23,7 +25,7 @@ void resizeImageParallel() {
     unsigned char *imageGray, *imageRGB;
     unsigned *energy;
     unsigned width, height, pitchGray, pitchRGB, imageSize, globalWidth, globalHeight;
-    int *backtrack, i;
+    int *backtrack, row;
     double elapsed;
     struct timespec start{}, finish{};
     cl_int ret;
@@ -84,9 +86,15 @@ void resizeImageParallel() {
     clGetDeviceInfo(device_id[0], CL_DEVICE_OPENCL_C_VERSION, sizeof(buf), &buf, NULL);
     printf("OpenCL version: %s\n", buf);
 
-    cl_ulong size;
-    clGetDeviceInfo(device_id[0], CL_DEVICE_LOCAL_MEM_SIZE, sizeof(cl_ulong), &size, 0);
-    printf("Local memory size: %lu\n", size);
+    // get max workgroup size
+    cl_uint max_work_item_dimensions;
+    clGetDeviceInfo(device_id[0], CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS, sizeof(max_work_item_dimensions),
+            &max_work_item_dimensions, NULL);
+
+    auto *size = (size_t *) (malloc(sizeof(size_t) * max_work_item_dimensions));
+    ret = clGetDeviceInfo(device_id[0], CL_DEVICE_MAX_WORK_ITEM_SIZES, sizeof(size_t) * max_work_item_dimensions,
+            size, NULL);
+    printf("Local memory size: %lu\n", size[0]);
 
     cl_context context = clCreateContext(NULL, ret_num_devices, &device_id[0], NULL, NULL, &ret);
 
@@ -95,23 +103,9 @@ void resizeImageParallel() {
     // load image
     FreeImage_ConvertToRawBits(imageGray, imageBitmapGray, pitchGray, 8, 0xFF, 0xFF, 0xFF, TRUE);
 
-    // repeat
-    /*
-     * SOBEL
-     */
-    // allocate memory on gpu
-    cl_mem image_input_mem_obj = clCreateBuffer(context, CL_MEM_READ_ONLY,
-            imageSize * sizeof(unsigned char), NULL, &ret);
-    cl_mem image_output_mem_obj = clCreateBuffer(context, CL_MEM_WRITE_ONLY,
-            imageSize * sizeof(unsigned char), NULL, &ret);
-
-    // write to gpu memory
-    clEnqueueWriteBuffer(command_queue, image_input_mem_obj, CL_FALSE, 0,
-            imageSize * sizeof(unsigned char), imageGray, 0, NULL, NULL);
-
     // prepare program
     cl_program program = clCreateProgramWithSource(context, 1,
-            (const char **) &source_str, NULL, &ret);
+                                                   (const char **) &source_str, NULL, &ret);
 
     // compile program
     ret = clBuildProgram(program, 1, &device_id[0], NULL, NULL, NULL);
@@ -119,12 +113,26 @@ void resizeImageParallel() {
     // logs
     size_t build_log_len;
     ret = clGetProgramBuildInfo(program, device_id[0], CL_PROGRAM_BUILD_LOG,
-            0, NULL, &build_log_len);
+                                0, NULL, &build_log_len);
     char *build_log = (char*) malloc(sizeof(char)*(build_log_len + 1));
     ret = clGetProgramBuildInfo(program, device_id[0], CL_PROGRAM_BUILD_LOG,
-            build_log_len, build_log, NULL);
+                                build_log_len, build_log, NULL);
     printf("%s\n", build_log);
     free(build_log);
+
+    // repeat
+    /**
+     * SOBEL
+     */
+    // allocate memory on gpu
+    cl_mem input_image_mem_obj = clCreateBuffer(context, CL_MEM_READ_ONLY,
+            imageSize * sizeof(unsigned char), NULL, &ret);
+    cl_mem energy_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE,
+            imageSize * sizeof(unsigned), NULL, &ret);
+
+    // write to gpu memory
+    clEnqueueWriteBuffer(command_queue, input_image_mem_obj, CL_FALSE, 0,
+            imageSize * sizeof(unsigned char), imageGray, 0, NULL, NULL);
 
     // prepare kernel
     cl_kernel kernel = clCreateKernel(program, "sobel", &ret);
@@ -135,8 +143,8 @@ void resizeImageParallel() {
     size_t global_size[2] = {local_size[0] * num_groups[0], local_size[1] * num_groups[1]};
 
     // set kernel args
-    ret = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&image_input_mem_obj);
-    ret |= clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&image_output_mem_obj);
+    ret = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&input_image_mem_obj);
+    ret |= clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&energy_mem_obj);
     ret |= clSetKernelArg(kernel, 2, sizeof(unsigned char) * local_size[0] * local_size[1] +
             (2 * local_size[0] + 2 * local_size[1]), NULL); //cache local memory
     ret |= clSetKernelArg(kernel, 3, sizeof(int), &width);
@@ -146,24 +154,168 @@ void resizeImageParallel() {
     ret = clEnqueueNDRangeKernel(command_queue, kernel, 2, NULL, global_size, local_size, 0, NULL, NULL);
 
     // synchronously read result
-    ret = clEnqueueReadBuffer(command_queue, image_output_mem_obj, CL_TRUE, 0,
-            imageSize*sizeof(unsigned char), imageGray, 0, NULL, NULL);
+    ret = clEnqueueReadBuffer(command_queue, energy_mem_obj, CL_TRUE, 0,
+            imageSize*sizeof(unsigned), energy, 0, NULL, NULL);
 
-    FIBITMAP *imageOutBitmap = FreeImage_ConvertFromRawBits(imageGray, width, height, pitchGray, 8, 0xFF, 0xFF, 0xFF, TRUE);
-    FreeImage_Save(FIF_PNG, imageOutBitmap, "../images/sobel_image.png", 0);
+    // save image if debug mode
+    if (DEBUG) {
+        const char *path = "../images/sobel_image.png";
+        saveUnsignedImage(energy, width, height, path);
+    }
+
+    /**
+     * CUMULATIVE
+     */
+    for (row = height - 2; row >= 0; row--) {
+        // prepare kernel
+        kernel = clCreateKernel(program, "cumulativeBasic", &ret);
+
+        // set kernel args
+        ret = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *) &energy_mem_obj);
+        ret |= clSetKernelArg(kernel, 1, sizeof(int), &width);
+        ret |= clSetKernelArg(kernel, 2, sizeof(int), &height);
+        ret |= clSetKernelArg(kernel, 3, sizeof(int), &row);
+
+        // run kernel
+        auto globalSize = (size_t) width;
+        ret = clEnqueueNDRangeKernel(command_queue, kernel, 1, NULL, &globalSize, NULL, 0, NULL, NULL);
+
+        // wait for kernel to finish
+        clFinish(command_queue);
+    }
+
+    // synchronously read result
+    ret = clEnqueueReadBuffer(command_queue, energy_mem_obj, CL_TRUE, 0,
+            imageSize*sizeof(unsigned), energy, 0, NULL, NULL);
+
+    // save image if debug mode
+    if (DEBUG) {
+        const char *path = "../images/cumulative_image.png";
+        saveUnsignedImage(energy, width, height, path);
+    }
+
+    /**
+     * FIND SEAM
+     */
+    // find min in top row
+    // group sizes
+    size_t localSize = 32;
+    auto numGroups = (size_t)ceil((double) width/localSize);
+    size_t globalSize = localSize*numGroups;
+
+    // gpu memory allocation
+    cl_mem reduction_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE,
+            numGroups * sizeof(unsigned), NULL, &ret);
+    cl_mem reduction_index_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE,
+            numGroups * sizeof(int), NULL, &ret);
+
+    // prepare kernel
+    kernel = clCreateKernel(program, "findMin", &ret);
+
+    // set kernel args
+    ret = clSetKernelArg(kernel, 0, sizeof(cl_mem), &energy_mem_obj);
+    ret |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &reduction_mem_obj);
+    ret |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &reduction_index_mem_obj);
+    ret |= clSetKernelArg(kernel, 3, sizeof(unsigned) * localSize, NULL);
+    ret |= clSetKernelArg(kernel, 4, sizeof(int) * localSize, NULL);
+    ret |= clSetKernelArg(kernel, 5, sizeof(int), &width);
+
+    // run kernel
+    ret = clEnqueueNDRangeKernel(command_queue, kernel, 1, NULL, &globalSize, &localSize, 0, NULL, NULL);
+
+    // wait for kernel to finish
+    clFinish(command_queue);
+
+    // finish reduction and find seam
+    cl_mem backtrack_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE,
+            height * sizeof(int), NULL, &ret);
+
+    // finish reduction and find seam to remove
+    // prepare kernel
+    kernel = clCreateKernel(program, "findSeam", &ret);
+
+    // group sizes
+    globalSize = (size_t) nearestPower((int) numGroups);
+
+    // set kernel args
+    ret = clSetKernelArg(kernel, 0, sizeof(cl_mem), &energy_mem_obj);
+    ret |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &reduction_mem_obj);
+    ret |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &reduction_index_mem_obj);
+    ret |= clSetKernelArg(kernel, 3, sizeof(unsigned) * globalSize, NULL);
+    ret |= clSetKernelArg(kernel, 4, sizeof(int) * globalSize, NULL);
+    ret |= clSetKernelArg(kernel, 5, sizeof(unsigned), &numGroups);
+    ret |= clSetKernelArg(kernel, 6, sizeof(int), &width);
+    ret |= clSetKernelArg(kernel, 7, sizeof(int), &height);
+    ret |= clSetKernelArg(kernel, 8, sizeof(cl_mem), &backtrack_mem_obj);
+
+    // run kernel
+    ret = clEnqueueNDRangeKernel(command_queue, kernel, 1, NULL, &globalSize, NULL, 0, NULL, NULL);
+
+    // wait for kernel to finish
+    clFinish(command_queue);
+
+    /**
+     * DELETE SEAM
+     */
+    // group sizes
+    local_size[0] = 32; local_size[1] = 32;
+    num_groups[0] = (size_t)ceil((double)height/local_size[0]);
+    num_groups[1] = (size_t)ceil((double)width/local_size[1]);
+    global_size[0] = local_size[0] * num_groups[0];
+    global_size[1] = local_size[1] * num_groups[1];
+
+    // allocate memory on gpu
+    cl_mem gray_copy_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE,
+            imageSize * sizeof(unsigned char), NULL, &ret);
+    cl_mem RGB_mem_obj = clCreateBuffer(context, CL_MEM_READ_ONLY,
+            imageSize * 3 * sizeof(unsigned char), NULL, &ret);
+    cl_mem RGB_copy_mem_obj = clCreateBuffer(context, CL_MEM_WRITE_ONLY,
+            imageSize * 3 * sizeof(unsigned char), NULL, &ret);
+
+    // load image
+    FreeImage_ConvertToRawBits(imageRGB, imageBitmap, pitchRGB, 24, 0xFF, 0xFF, 0xFF, TRUE);
+
+    // write RGB image to gpu memory
+    clEnqueueWriteBuffer(command_queue, RGB_mem_obj, CL_FALSE, 0,
+            imageSize * 3 * sizeof(unsigned char), imageRGB, 0, NULL, NULL);
+
+    // prepare kernel
+    kernel = clCreateKernel(program, "deleteSeam", &ret);
+
+    // set kernel args
+    ret = clSetKernelArg(kernel, 0, sizeof(cl_mem), &input_image_mem_obj);
+    ret |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &gray_copy_mem_obj);
+    ret |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &RGB_mem_obj);
+    ret |= clSetKernelArg(kernel, 3, sizeof(cl_mem), &RGB_copy_mem_obj);
+    ret |= clSetKernelArg(kernel, 4, sizeof(cl_mem), &backtrack_mem_obj);
+    ret |= clSetKernelArg(kernel, 5, sizeof(int), &width);
+    ret |= clSetKernelArg(kernel, 6, sizeof(int), &height);
+
+    // run kernel
+    ret = clEnqueueNDRangeKernel(command_queue, kernel, 2, NULL, global_size, local_size, 0, NULL, NULL);
+
+    // wait for kernel to finish
+    clFinish(command_queue);
+
+    imageSize = (width-1)*height;
+    ret = clEnqueueReadBuffer(command_queue, RGB_copy_mem_obj, CL_TRUE, 0,
+            imageSize*3*sizeof(unsigned char), imageRGB, 0, NULL, NULL);
+
+
+    FIBITMAP *imageOutBitmap = FreeImage_ConvertFromRawBits(imageRGB, width-1,
+            height, (width-1)*3, 24, 0xFF, 0xFF, 0xFF, TRUE);
+    FreeImage_Save(FIF_PNG, imageOutBitmap, "../images/gpu_cut_image.png", 0);
     FreeImage_Unload(imageOutBitmap);
-
-    //cumulative
-
-    // find and delete seam
 
     // cleanup
     ret = clFlush(command_queue);
     ret = clFinish(command_queue);
     ret = clReleaseKernel(kernel);
     ret = clReleaseProgram(program);
-    ret = clReleaseMemObject(image_input_mem_obj);
-    ret = clReleaseMemObject(image_output_mem_obj);
+    ret = clReleaseMemObject(energy_mem_obj);
+    ret = clReleaseMemObject(backtrack_mem_obj);
+    ret = clReleaseMemObject(reduction_mem_obj);
+    ret = clReleaseMemObject(reduction_index_mem_obj);
     ret = clReleaseCommandQueue(command_queue);
     ret = clReleaseContext(context);
 
@@ -258,7 +410,7 @@ void resizeImageSerial() {
 
     // rotate image back and save it
     FIBITMAP *imageOutBitmap = FreeImage_ConvertFromRawBits(imageRGB, height,
-                                                            width, height*3, 24, 0xFF, 0xFF, 0xFF, TRUE);
+            width, height*3, 24, 0xFF, 0xFF, 0xFF, TRUE);
     imageOutBitmap = FreeImage_Rotate(imageOutBitmap, -90, NULL);
     FreeImage_Save(FIF_PNG, imageOutBitmap, "../images/cpu_cut_image.png", 0);
     FreeImage_Unload(imageOutBitmap);
