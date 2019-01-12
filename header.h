@@ -35,9 +35,9 @@ void findSeam(unsigned *image, int *backtrack, int width, int height);
 
 void deleteSeam(unsigned char *gray, unsigned char *RGB, const int *backtrack, int width, int height);
 
-void resizeImageSerial();
+void resizeImageSerial(const char *imagePath);
 
-void resizeImageParallel();
+void resizeImageParallel(const char *imagePath);
 
 void saveUnsignedImage(const unsigned int *image, int width, int height, const char *path);
 

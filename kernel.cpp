@@ -248,3 +248,39 @@ __kernel void deleteSeam(__global unsigned char *gray, __global unsigned char *g
         RGBCopy[k - (chunk*3)] = RGB[k];
     }
 }
+
+__kernel void rotateRight(__global unsigned char *srcGray, __global unsigned char *destGray,
+        __global unsigned char *srcRGB, __global unsigned char *destRGB, int width, int height) {
+    int i = get_global_id(0);
+    int j = get_global_id(1);
+
+    if (i >= height || j >= width) {
+        return;
+    }
+
+    // rotate gray img
+    destGray[j*height + (height-1-i)] = srcGray[i*width + j];
+
+    // rotate RGB img
+    for (int k = 0; k < 3; k++) {
+        destRGB[j*height*3 + 3*(height-1-i)+k] = srcRGB[i*width*3 + j*3 + k];
+    }
+}
+
+__kernel void rotateLeft(__global unsigned char *srcGray, __global unsigned char *destGray,
+        __global unsigned char *srcRGB, __global unsigned char *destRGB, int width, int height) {
+    int i = get_global_id(0);
+    int j = get_global_id(1);
+
+    if (i >= height || j >= width) {
+        return;
+    }
+
+    // rotate gray image
+    destGray[(width-j-1)*height + i] = srcGray[i*width + j];
+
+    // rotate RGB img
+    for (int k = 0; k < 3; k++) {
+        destRGB[(width-j-1)*3*height + 3*i + k] = srcRGB[i*width*3 + j*3 + k];
+    }
+}
