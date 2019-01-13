@@ -43,6 +43,6 @@ void saveUnsignedImage(const unsigned int *image, int width, int height, const c
 
 int nearestPower(int num);
 
-unsigned nearestMultipleOf(int num, int multiple);
+unsigned nearestMultipleOf(unsigned num, int multiple);
 
 #endif //SEMINAR_HEADER_H
