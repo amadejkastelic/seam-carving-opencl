@@ -82,3 +82,7 @@ int nearestPower(int num) {
 
     return num;
 }
+
+unsigned nearestMultipleOf(int num, int multiple) {
+    return ((num + multiple - 1) / multiple) * multiple;
+}

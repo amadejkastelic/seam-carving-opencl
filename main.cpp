@@ -9,13 +9,15 @@
 // wanted image size
 #define DESIRED_WIDTH 400
 #define DESIRED_HEIGHT 800
+// debug mode
+#define DEBUG 0
 
 int main() {
     // Parallel algorithm
     resizeImageParallel(IMAGE_PATH);
 
     // Serial algorithm
-    resizeImageSerial(IMAGE_PATH);
+    //resizeImageSerial(IMAGE_PATH);
 
     return 0;
 }
@@ -133,7 +135,7 @@ void resizeImageParallel(const char *imagePath) {
     cl_kernel rotateLeftKernel = clCreateKernel(program, "rotateLeft", &ret);
 
     // allocate gpu memory (we have enough - 8GB)
-    cl_mem input_image_mem_obj = clCreateBuffer(context, CL_MEM_READ_ONLY,
+    cl_mem input_image_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE,
             imageSize * sizeof(unsigned char), NULL, &ret);
     cl_mem energy_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE,
             imageSize * sizeof(unsigned), NULL, &ret);
@@ -178,6 +180,14 @@ void resizeImageParallel(const char *imagePath) {
 
         // wait for sobel to finish
         clFinish(command_queue);
+
+        if (DEBUG == 1 && i == 5) {
+            auto *energy = (unsigned *) malloc(imageSize * sizeof(unsigned));
+            ret = clEnqueueReadBuffer(command_queue, energy_mem_obj, CL_TRUE, 0,
+                    imageSize*sizeof(unsigned), energy, 0, NULL, NULL);
+            saveUnsignedImage(energy, width, height, "../images/sobel_gpu_image2.png");
+            free(energy);
+        }
 
         /**
          * CUMULATIVE

@@ -2,6 +2,13 @@
 // Created by amadej on 29. 12. 18.
 // OpenCL kernel file
 //
+/**
+ * Find minimum of three numbers.
+ * @param x Number 1.
+ * @param y Number 2.
+ * @param z Number 3.
+ * @return Minimum of input numbers.
+ */
 inline unsigned minimum(unsigned x, unsigned y, unsigned z) {
     return min(min(x, y), z);
 }
@@ -52,7 +59,7 @@ inline int indexOfMin(__global unsigned *image, int width, int height, int y, in
 /**
  * Calculate energy of specified image.
  * @param imageIn Input image.
- * @param imageOut Energy of image.
+ * @param imageOut Energy of image (result).
  * @param cached Local memory for calculation.
  * @param width Image width.
  * @param height Image height.
@@ -124,9 +131,9 @@ __kernel void sobel(__global unsigned char *imageIn, __global unsigned *imageOut
 __kernel void cumulativeBasic(__global unsigned *cumulative, int width, int height, int row) {
     int index, j = get_global_id(0);
 
-    if (j >= width) {
+    /*if (j >= width) {
         return;
-    }
+    }*/
 
     index = row*width + j;
     cumulative[index] = cumulative[index] + minimum(
@@ -182,6 +189,18 @@ __kernel void findMin(__global unsigned *cumulative, __global unsigned *result, 
     }
 }
 
+/**
+ * Calculates last step of reduction and finds the seam to delete.
+ * @param cumulative Array of cumulatives.
+ * @param reduction Array of findMin's result values.
+ * @param reductionIndex Array of findMin's result indexes.
+ * @param cache Local array for reduction values cache.
+ * @param cacheIndex Local array for reduction indexes cache.
+ * @param reductionWidth Size of reduction and reductionIndex array.
+ * @param width Image width.
+ * @param height Image height.
+ * @param backtrack Array of indexes for storing the result (seam to remove).
+ */
 __kernel void findSeam(__global unsigned *cumulative, __global unsigned *reduction, __global unsigned *reductionIndex,
         __local unsigned *cache, __local int *cacheIndex, unsigned reductionWidth, int width, int height,
         __global int *backtrack) {
@@ -220,6 +239,16 @@ __kernel void findSeam(__global unsigned *cumulative, __global unsigned *reducti
     }
 }
 
+/**
+ * Deletes found seam.
+ * @param gray Array with gray image.
+ * @param grayCopy Array for cut 8-bit image.
+ * @param RGB Array with 24-bit image.
+ * @param RGBCopy Array for cut 24-bit image.
+ * @param backtrack Seam to delete.
+ * @param width Image width.
+ * @param height Image height.
+ */
 __kernel void deleteSeam(__global unsigned char *gray, __global unsigned char *grayCopy,
         __global unsigned char *RGB, __global unsigned char *RGBCopy, __global int *backtrack,
         int width, int height) {
@@ -249,6 +278,15 @@ __kernel void deleteSeam(__global unsigned char *gray, __global unsigned char *g
     }
 }
 
+/**
+ * Rotates image for 90 degrees.
+ * @param srcGray Source 8-bit image.
+ * @param destGray Destination 8-bit image.
+ * @param srcRGB Source 24-bit image.
+ * @param destRGB Destination 24-bit image.
+ * @param width Image width.
+ * @param height Image height.
+ */
 __kernel void rotateRight(__global unsigned char *srcGray, __global unsigned char *destGray,
         __global unsigned char *srcRGB, __global unsigned char *destRGB, int width, int height) {
     int i = get_global_id(0);
@@ -267,6 +305,15 @@ __kernel void rotateRight(__global unsigned char *srcGray, __global unsigned cha
     }
 }
 
+/**
+ * Rotates image for -90 degrees (270).
+ * @param srcGray Source 8-bit image.
+ * @param destGray Destination 8-bit image.
+ * @param srcRGB Source 24-bit image.
+ * @param destRGB Destination 24-bit image.
+ * @param width Image width.
+ * @param height Image height.
+ */
 __kernel void rotateLeft(__global unsigned char *srcGray, __global unsigned char *destGray,
         __global unsigned char *srcRGB, __global unsigned char *destRGB, int width, int height) {
     int i = get_global_id(0);
