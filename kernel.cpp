@@ -30,7 +30,7 @@ inline unsigned getPixelUnsigned(__global unsigned *image, int width, int height
 }
 
 inline unsigned getCachedPixel(__local unsigned char *image, int width, int height, int y, int x,
-                          __global unsigned char *globalImage, int globalWidth, int globalHeight, int globalY, int globalX) {
+        __global unsigned char *globalImage, int globalWidth, int globalHeight, int globalY, int globalX) {
     // boundary case
     if (x < 0 || x >= width)
         return getPixel(globalImage, globalWidth, globalHeight, globalY, globalX, 0);
@@ -39,6 +39,26 @@ inline unsigned getCachedPixel(__local unsigned char *image, int width, int heig
     return image[y*width + x];
 }
 
+inline unsigned getCachedPixelUnsigned(__local unsigned *image, int width, int height, int y, int x,
+        __global unsigned *globalImage, int globalWidth, int globalHeight, int globalY, int globalX) {
+    // boundary case
+    if (x < 0 || x >= width)
+        return getPixel(globalImage, globalWidth, globalHeight, globalY, globalX, UINT_MAX);
+    if (y < 0 || y >= height)
+        return getPixel(globalImage, globalWidth, globalHeight, globalY, globalX, UINT_MAX);
+    return image[y*width + x];
+}
+
+/**
+ * Find index of minimum element (util function for findSeam kernel).
+ * @param image Input image (global).
+ * @param width Image width.
+ * @param height Image height.
+ * @param y Row index.
+ * @param x Column index.
+ * @param len Number of how many elements to check.
+ * @return Index of minimum element.
+ */
 inline int indexOfMin(__global unsigned *image, int width, int height, int y, int x, int len) {
     int i, index;
     unsigned min, temp;
@@ -84,7 +104,7 @@ __kernel void sobel(__global unsigned char *imageIn, __global unsigned *imageOut
 
     cached[index] = getPixel(imageIn, width, height, i, j, 0);
 
-    if (y == cacheHeight) {
+    /*if (y == cacheHeight) {
         cached[(y+1) * cacheWidth + x] = getPixel(imageIn, width, height, y+1, x, 0);
     }
     if (x == cacheWidth) {
@@ -92,7 +112,7 @@ __kernel void sobel(__global unsigned char *imageIn, __global unsigned *imageOut
     }
     if (y == cacheHeight && x == cacheWidth) {
         cached[(y+1) * cacheWidth + x + 1] = getPixel(imageIn, width, height, y+1, x+1, 0);
-    }
+    }*/
 
     barrier(CLK_LOCAL_MEM_FENCE);
 
@@ -141,6 +161,45 @@ __kernel void cumulativeBasic(__global unsigned *cumulative, int width, int heig
             getPixelUnsigned(cumulative, width, height, row+1, j, UINT_MAX),
             getPixelUnsigned(cumulative, width, height, row+1, j+1, UINT_MAX)
     );
+}
+
+__kernel void cumulativeTrapezoid1(__global unsigned *cumulative, __local unsigned *cache, int width, int height) {
+    int i = get_global_id(0);
+    int j = get_global_id(1);
+
+    if (i >= height || j >= width) {
+        return;
+    }
+
+    int y = get_local_id(0);
+    int x = get_local_id(1);
+
+    int cacheHeight = get_local_size(0);
+    int cacheWidth = get_local_size(1);
+
+    int globalIndex = i*width + j;
+    int localIndex = y*cacheWidth + x;
+
+    // copy data to local memory
+    cache[localIndex] = getPixelUnsigned(cumulative, width, height, i, j, UINT_MAX);
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // ignore first line
+    if (i == 0) {
+        return;
+    }
+
+    for (int k = 0; k < cacheHeight; k++) {
+        if (i == k) {
+            cache[localIndex] = cache[localIndex] + minimum(
+                getCachedPixelUnsigned(cache, cacheWidth, cacheHeight, y-1, x-1, cumulative, width, height, i-1, j-1),
+                getCachedPixelUnsigned(cache, cacheWidth, cacheHeight, y-1, x, cumulative, width, height, i-1, j),
+                getCachedPixelUnsigned(cache, cacheWidth, cacheHeight, y-1, x+1, cumulative, width, height, i-1, j+1)
+            );
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
 }
 
 /**
