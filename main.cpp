@@ -641,13 +641,9 @@ void resizeImageSerial(const char *imagePath) {
         }
         free(backtrack);
 
-        unsigned temp = width;
-        width = height;
-        height = temp;
-
         // rotate image back and save it
-        FIBITMAP *imageOutBitmap = FreeImage_ConvertFromRawBits(imageRGB, width,
-                height, width*3, 24, 0xFF, 0xFF, 0xFF, TRUE);
+        FIBITMAP *imageOutBitmap = FreeImage_ConvertFromRawBits(imageRGB, height,
+                width, height*3, 24, 0xFF, 0xFF, 0xFF, TRUE);
         imageOutBitmap = FreeImage_Rotate(imageOutBitmap, -90, NULL);
         FreeImage_Save(FIF_PNG, imageOutBitmap, "../images/cpu_cut_image.png", 0);
         FreeImage_Unload(imageOutBitmap);
