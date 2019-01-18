@@ -8,7 +8,7 @@
 #define IMAGE_PATH "../images/image.jpg"
 // wanted image size
 #define DESIRED_WIDTH 400
-#define DESIRED_HEIGHT 800
+#define DESIRED_HEIGHT 868
 // debug mode
 #define DEBUG 0
 
@@ -131,8 +131,7 @@ void resizeImageParallel(const char *imagePath) {
     cl_kernel findMinKernel = clCreateKernel(program, "findMin", &ret);
     cl_kernel findSeamKernel = clCreateKernel(program, "findSeam", &ret);
     cl_kernel deleteSeamKernel = clCreateKernel(program, "deleteSeam", &ret);
-    cl_kernel rotateRightKernel = clCreateKernel(program, "rotateRight", &ret);
-    cl_kernel rotateLeftKernel = clCreateKernel(program, "rotateLeft", &ret);
+    cl_kernel transposeKernel = clCreateKernel(program, "transpose", &ret);
 
     // allocate gpu memory (we have enough - 8GB)
     cl_mem input_image_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE,
@@ -321,15 +320,17 @@ void resizeImageParallel(const char *imagePath) {
         global_size[1] = width;
 
         // set kernel args
-        ret = clSetKernelArg(rotateRightKernel, 0, sizeof(cl_mem), &gray_copy_mem_obj);
-        ret |= clSetKernelArg(rotateRightKernel, 1, sizeof(cl_mem), &input_image_mem_obj);
-        ret |= clSetKernelArg(rotateRightKernel, 2, sizeof(cl_mem), &RGB_copy_mem_obj);
-        ret |= clSetKernelArg(rotateRightKernel, 3, sizeof(cl_mem), &RGB_mem_obj);
-        ret |= clSetKernelArg(rotateRightKernel, 4, sizeof(int), &width);
-        ret |= clSetKernelArg(rotateRightKernel, 5, sizeof(int), &height);
+        ret = clSetKernelArg(transposeKernel, 0, sizeof(cl_mem), &gray_copy_mem_obj);
+        ret |= clSetKernelArg(transposeKernel, 1, sizeof(cl_mem), &input_image_mem_obj);
+        ret |= clSetKernelArg(transposeKernel, 2, 32*32*sizeof(unsigned char), NULL);
+        ret |= clSetKernelArg(transposeKernel, 3, sizeof(cl_mem), &RGB_copy_mem_obj);
+        ret |= clSetKernelArg(transposeKernel, 4, sizeof(cl_mem), &RGB_mem_obj);
+        ret |= clSetKernelArg(transposeKernel, 5, 32*32*3*sizeof(unsigned char), NULL);
+        ret |= clSetKernelArg(transposeKernel, 6, sizeof(int), &width);
+        ret |= clSetKernelArg(transposeKernel, 7, sizeof(int), &height);
 
         // run kernel
-        ret = clEnqueueNDRangeKernel(command_queue, rotateRightKernel, 2, NULL, global_size, NULL, 0, NULL, NULL);
+        ret = clEnqueueNDRangeKernel(command_queue, transposeKernel, 2, NULL, global_size, local_size, 0, NULL, NULL);
 
         // wait for rotation to finish
         clFinish(command_queue);
@@ -488,15 +489,17 @@ void resizeImageParallel(const char *imagePath) {
         global_size[1] = width;
 
         // set kernel args
-        ret = clSetKernelArg(rotateLeftKernel, 0, sizeof(cl_mem), &input_image_mem_obj);
-        ret |= clSetKernelArg(rotateLeftKernel, 1, sizeof(cl_mem), &gray_copy_mem_obj);
-        ret |= clSetKernelArg(rotateLeftKernel, 2, sizeof(cl_mem), &RGB_mem_obj);
-        ret |= clSetKernelArg(rotateLeftKernel, 3, sizeof(cl_mem), &RGB_copy_mem_obj);
-        ret |= clSetKernelArg(rotateLeftKernel, 4, sizeof(int), &width);
-        ret |= clSetKernelArg(rotateLeftKernel, 5, sizeof(int), &height);
+        ret = clSetKernelArg(transposeKernel, 0, sizeof(cl_mem), &input_image_mem_obj);
+        ret |= clSetKernelArg(transposeKernel, 1, sizeof(cl_mem), &gray_copy_mem_obj);
+        ret |= clSetKernelArg(transposeKernel, 2, 32*32*sizeof(unsigned char), NULL);
+        ret |= clSetKernelArg(transposeKernel, 3, sizeof(cl_mem), &RGB_mem_obj);
+        ret |= clSetKernelArg(transposeKernel, 4, sizeof(cl_mem), &RGB_copy_mem_obj);
+        ret |= clSetKernelArg(transposeKernel, 5, 32*32*3*sizeof(unsigned char), NULL);
+        ret |= clSetKernelArg(transposeKernel, 6, sizeof(int), &width);
+        ret |= clSetKernelArg(transposeKernel, 7, sizeof(int), &height);
 
         // run kernel
-        ret = clEnqueueNDRangeKernel(command_queue, rotateLeftKernel, 2, NULL, global_size, NULL, 0, NULL, NULL);
+        ret = clEnqueueNDRangeKernel(command_queue, transposeKernel, 2, NULL, global_size, local_size, 0, NULL, NULL);
 
         temp = height;
         height = width;
@@ -533,8 +536,7 @@ void resizeImageParallel(const char *imagePath) {
     ret = clReleaseKernel(findMinKernel);
     ret = clReleaseKernel(findSeamKernel);
     ret = clReleaseKernel(deleteSeamKernel);
-    ret = clReleaseKernel(rotateLeftKernel);
-    ret = clReleaseKernel(rotateRightKernel);
+    ret = clReleaseKernel(transposeKernel);
     ret = clReleaseProgram(program);
     ret = clReleaseMemObject(energy_mem_obj);
     ret = clReleaseMemObject(input_image_mem_obj);

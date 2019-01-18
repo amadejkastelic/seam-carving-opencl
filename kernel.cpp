@@ -331,62 +331,47 @@ __kernel void deleteSeam(__global unsigned char *gray, __global unsigned char *g
     int index = i*width + j;
     grayCopy[index - chunk] = gray[index];
 
-    index = i * (width*3) + (j*3);
-    for (int k = index; k < index + 3; k++) {
-        RGBCopy[k - (chunk*3)] = RGB[k];
+    if (j < width) {
+        index = i * (width * 3) + (j * 3);
+        for (int k = index; k < index + 3; k++) {
+            RGBCopy[k - (chunk * 3)] = RGB[k];
+        }
     }
 }
 
-/**
- * Rotates image for 90 degrees.
- * @param srcGray Source 8-bit image.
- * @param destGray Destination 8-bit image.
- * @param srcRGB Source 24-bit image.
- * @param destRGB Destination 24-bit image.
- * @param width Image width.
- * @param height Image height.
- */
-__kernel void rotateRight(__global unsigned char *srcGray, __global unsigned char *destGray,
-        __global unsigned char *srcRGB, __global unsigned char *destRGB, int width, int height) {
+__kernel void transpose(__global unsigned char *srcGray, __global unsigned char *destGray, __local unsigned char *cacheGray,
+        __global unsigned char *srcRGB, __global unsigned char *destRGB, __local unsigned char *cacheRGB, int width, int height) {
     int i = get_global_id(0);
     int j = get_global_id(1);
 
-    if (i >= height || j >= width) {
-        return;
+    int y = get_local_id(0);
+    int x = get_local_id(1);
+
+    int localSize = get_local_size(0);
+
+    // copy to local
+    if (i < height && j < width) {
+        cacheGray[y*localSize + x] = srcGray[i*width + j];
+
+        int cacheIndex = y*3*localSize + 3*x;
+        int globalIndex = i*width*3 + j*3;
+        for (int k = 0; k < 3; k++) {
+            cacheRGB[cacheIndex + k] = srcRGB[globalIndex + k];
+        }
     }
 
-    // rotate gray img
-    destGray[j*height + (height-1-i)] = srcGray[i*width + j];
+    barrier(CLK_LOCAL_MEM_FENCE);
 
-    // rotate RGB img
-    for (int k = 0; k < 3; k++) {
-        destRGB[j*height*3 + 3*(height-1-i)+k] = srcRGB[i*width*3 + j*3 + k];
-    }
-}
+    // write to global
+    i = get_group_id(1) * localSize + y;
+    j = get_group_id(0) * localSize + x;
+    if (i < width && j < height) {
+        destGray[i*height + j] = cacheGray[x*localSize + y];
 
-/**
- * Rotates image for -90 degrees (270).
- * @param srcGray Source 8-bit image.
- * @param destGray Destination 8-bit image.
- * @param srcRGB Source 24-bit image.
- * @param destRGB Destination 24-bit image.
- * @param width Image width.
- * @param height Image height.
- */
-__kernel void rotateLeft(__global unsigned char *srcGray, __global unsigned char *destGray,
-        __global unsigned char *srcRGB, __global unsigned char *destRGB, int width, int height) {
-    int i = get_global_id(0);
-    int j = get_global_id(1);
-
-    if (i >= height || j >= width) {
-        return;
-    }
-
-    // rotate gray image
-    destGray[(width-j-1)*height + i] = srcGray[i*width + j];
-
-    // rotate RGB img
-    for (int k = 0; k < 3; k++) {
-        destRGB[(width-j-1)*3*height + 3*i + k] = srcRGB[i*width*3 + j*3 + k];
+        int cacheIndex = x*3*localSize + 3*y;
+        int globalIndex = i*height*3 + 3*j;
+        for (int k = 0; k < 3; k++) {
+            destRGB[globalIndex + k] = cacheRGB[cacheIndex + k];
+        }
     }
 }
