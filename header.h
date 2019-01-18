@@ -41,6 +41,8 @@ void resizeImageParallel(const char *imagePath);
 
 void saveUnsignedImage(const unsigned int *image, int width, int height, const char *path);
 
+void saveImage(unsigned char *image, int width, int height, unsigned depth, const char *path);
+
 int nearestPower(int num);
 
 unsigned nearestMultipleOf(unsigned num, int multiple);

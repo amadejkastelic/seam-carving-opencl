@@ -70,6 +70,13 @@ void saveUnsignedImage(const unsigned int *image, int width, int height, const c
     free(temp);
 }
 
+void saveImage(unsigned char *image, int width, int height, unsigned depth, const char *path) {
+    FIBITMAP *imageOut = FreeImage_ConvertFromRawBits(image, width,
+            height, width*(depth/8), depth, 0xFF, 0xFF, 0xFF, TRUE);
+    FreeImage_Save(FIF_PNG, imageOut, path, 0);
+    FreeImage_Unload(imageOut);
+}
+
 // source: https://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
 int nearestPower(int num) {
     num--;

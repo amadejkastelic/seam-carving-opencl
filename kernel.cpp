@@ -151,9 +151,9 @@ __kernel void sobel(__global unsigned char *imageIn, __global unsigned *imageOut
 __kernel void cumulativeBasic(__global unsigned *cumulative, int width, int height, int row) {
     int index, j = get_global_id(0);
 
-    /*if (j >= width) {
+    if (j >= width) {
         return;
-    }*/
+    }
 
     index = row*width + j;
     cumulative[index] = cumulative[index] + minimum(
