@@ -43,9 +43,9 @@ inline unsigned getCachedPixelUnsigned(__local unsigned *image, int width, int h
         __global unsigned *globalImage, int globalWidth, int globalHeight, int globalY, int globalX) {
     // boundary case
     if (x < 0 || x >= width)
-        return getPixel(globalImage, globalWidth, globalHeight, globalY, globalX, UINT_MAX);
+        return getPixelUnsigned(globalImage, globalWidth, globalHeight, globalY, globalX, UINT_MAX);
     if (y < 0 || y >= height)
-        return getPixel(globalImage, globalWidth, globalHeight, globalY, globalX, UINT_MAX);
+        return getPixelUnsigned(globalImage, globalWidth, globalHeight, globalY, globalX, UINT_MAX);
     return image[y*width + x];
 }
 
@@ -163,13 +163,13 @@ __kernel void cumulativeBasic(__global unsigned *cumulative, int width, int heig
     );
 }
 
-__kernel void cumulativeTrapezoid1(__global unsigned *cumulative, __local unsigned *cache, int width, int height) {
+__kernel void cumulativeTrapezoid1(__global unsigned *cumulative, __local unsigned *cache, int width, int height, int numGroup) {
     int i = get_global_id(0);
     int j = get_global_id(1);
 
-    if (i >= height || j >= width) {
-        return;
-    }
+    // calculate correct ids
+    int globalI = i + numGroup*get_local_size(0);
+    int globalJ = j + get_group_id(1)*get_local_size(1);
 
     int y = get_local_id(0);
     int x = get_local_id(1);
@@ -177,29 +177,112 @@ __kernel void cumulativeTrapezoid1(__global unsigned *cumulative, __local unsign
     int cacheHeight = get_local_size(0);
     int cacheWidth = get_local_size(1);
 
-    int globalIndex = i*width + j;
+    // mirror thread indexes
+    if (get_group_id(1) != 0 && y - x >= cacheHeight/2 && x < cacheWidth/4 && y >= cacheHeight/2) {
+        globalI = cacheHeight*numGroup + cacheHeight - 1 - y;
+        globalJ = cacheWidth * (get_group_id(1)*2-1) + cacheWidth - 1 - x;
+        y = cacheHeight - 1 - y;
+    } else if (get_group_id(1) != get_global_size(1)/cacheWidth && y - (cacheWidth - 1 - x) >= cacheHeight/2) {
+        globalI = cacheHeight*numGroup + cacheHeight - 1 - y;
+        globalJ = cacheWidth * (get_group_id(1)*2+1) + cacheWidth - 1 - x;
+        y = cacheHeight - 1 - y;
+    }
+
     int localIndex = y*cacheWidth + x;
 
+    int globalIndex = globalI*width + globalJ;
+
     // copy data to local memory
-    cache[localIndex] = getPixelUnsigned(cumulative, width, height, i, j, UINT_MAX);
+    //cache[localIndex] = getPixelUnsigned(cumulative, width, height, globalI, globalJ, UINT_MAX);
 
-    barrier(CLK_LOCAL_MEM_FENCE);
+    //barrier(CLK_LOCAL_MEM_FENCE);
 
-    // ignore first line
-    if (i == 0) {
+    /*if (globalI == 0) {
         return;
     }
 
-    for (int k = 0; k < cacheHeight; k++) {
-        if (i == k) {
-            cache[localIndex] = cache[localIndex] + minimum(
-                getCachedPixelUnsigned(cache, cacheWidth, cacheHeight, y-1, x-1, cumulative, width, height, i-1, j-1),
-                getCachedPixelUnsigned(cache, cacheWidth, cacheHeight, y-1, x, cumulative, width, height, i-1, j),
-                getCachedPixelUnsigned(cache, cacheWidth, cacheHeight, y-1, x+1, cumulative, width, height, i-1, j+1)
+    if (globalI >= height || globalJ >= width) {
+        return;
+    }*/
+
+    for (int k = cacheHeight-1; k >= 0; k--) {
+        if (y == k && globalI < height-1 && globalJ < width) {
+            cumulative[globalIndex] += minimum(
+                    //getCachedPixelUnsigned(cache, cacheWidth, cacheHeight, y-1, x-1, cumulative, width, height, globalI-1, globalJ-1),
+                    //getCachedPixelUnsigned(cache, cacheWidth, cacheHeight, y-1, x, cumulative, width, height, globalI-1, globalJ),
+                    //getCachedPixelUnsigned(cache, cacheWidth, cacheHeight, y-1, x+1, cumulative, width, height, globalI-1, globalJ+1)
+                    getPixelUnsigned(cumulative, width, height, globalI+1, globalJ-1, UINT_MAX),
+                    getPixelUnsigned(cumulative, width, height, globalI+1, globalJ, UINT_MAX),
+                    getPixelUnsigned(cumulative, width, height, globalI+1, globalJ+1, UINT_MAX)
             );
         }
-        barrier(CLK_LOCAL_MEM_FENCE);
+        barrier(CLK_GLOBAL_MEM_FENCE);
     }
+
+    /*if (globalI < height && globalJ < width) {
+        cumulative[globalIndex] = cache[localIndex];
+    }*/
+}
+
+__kernel void cumulativeTrapezoid2(__global unsigned *cumulative, __local unsigned *cache, int width, int height, int numGroup) {
+    int i = get_global_id(0);
+    int j = get_global_id(1);
+
+    // calculate correct ids
+    int globalI = i + numGroup*get_local_size(0);
+    int globalJ = j + (get_group_id(1) + 1) * get_local_size(1);
+
+    int y = get_local_id(0);
+    int x = get_local_id(1);
+
+    int cacheHeight = get_local_size(0);
+    int cacheWidth = get_local_size(1);
+
+    // mirror thread indexes
+    if (y + x < cacheHeight/2 && x < cacheWidth/4 && y < cacheHeight/2) {
+        globalI = cacheHeight*numGroup + cacheHeight - 1 - y;
+        globalJ = cacheWidth * ((get_group_id(1)*2+1)-1) + cacheWidth - 1 - x;
+        y = cacheHeight - 1 - y;
+    } else if (get_group_id(1)+1 != get_global_size(1)/cacheWidth && y + cacheWidth - 1 - x < cacheHeight/2) {
+        globalI = cacheHeight*numGroup + cacheHeight - 1 - y;
+        globalJ = cacheWidth * ((get_group_id(1)*2+1)+1) + cacheWidth - 1 - x;
+        y = cacheHeight - 1 - y;
+    }
+
+    int localIndex = y*cacheWidth + x;
+
+    int globalIndex = globalI*width + globalJ;
+
+    // copy data to local memory
+    //cache[localIndex] = getPixelUnsigned(cumulative, width, height, globalI, globalJ, UINT_MAX);
+
+    //barrier(CLK_LOCAL_MEM_FENCE);
+
+    /*if (globalI == 0) {
+        return;
+    }
+
+    if (globalI >= height || globalJ >= width) {
+        return;
+    }*/
+
+    for (int k = cacheHeight-1; k >= 0; k--) {
+        if (y == k && globalI < height-1 && globalJ < width) {
+            cumulative[globalIndex] += minimum(
+                    //getCachedPixelUnsigned(cache, cacheWidth, cacheHeight, y-1, x-1, cumulative, width, height, globalI-1, globalJ-1),
+                    //getCachedPixelUnsigned(cache, cacheWidth, cacheHeight, y-1, x, cumulative, width, height, globalI-1, globalJ),
+                    //getCachedPixelUnsigned(cache, cacheWidth, cacheHeight, y-1, x+1, cumulative, width, height, globalI-1, globalJ+1)
+                    getPixelUnsigned(cumulative, width, height, globalI+1, globalJ-1, UINT_MAX),
+                    getPixelUnsigned(cumulative, width, height, globalI+1, globalJ, UINT_MAX),
+                    getPixelUnsigned(cumulative, width, height, globalI+1, globalJ+1, UINT_MAX)
+            );
+        }
+        barrier(CLK_GLOBAL_MEM_FENCE);
+    }
+
+    /*if (globalI < height && globalJ < width) {
+        cumulative[globalIndex] = cache[localIndex];
+    }*/
 }
 
 /**
@@ -319,10 +402,10 @@ __kernel void deleteSeam(__global unsigned char *gray, __global unsigned char *g
     }
 
     int chunk;
-    int pixel = backtrack[i];
-    if (j < pixel) {
+    int start = backtrack[i];
+    if (j < start) {
         chunk = i;
-    } else if (j == pixel) {
+    } else if (j == start) {
         return;
     } else {
         chunk = i+1;
