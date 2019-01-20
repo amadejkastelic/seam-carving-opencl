@@ -18,7 +18,7 @@ int main() {
     resizeImageParallel(IMAGE_PATH);
 
     // Serial algorithm
-    //resizeImageSerial(IMAGE_PATH);
+    resizeImageSerial(IMAGE_PATH);
 
     return 0;
 }
@@ -214,13 +214,13 @@ void resizeImageParallel(const char *imagePath) {
             clFinish(command_queue);
         }*/
 
-        local_size[0] = 16; local_size[1] = WORKGROUP_SIZE;
-        global_size[0] = 16;
+        local_size[0] = 15; local_size[1] = WORKGROUP_SIZE;
+        global_size[0] = 15;
         global_size[1] = nearestMultipleOf(width/2, WORKGROUP_SIZE);
 
         size_t offset[2] = {0, WORKGROUP_SIZE};
 
-        for (row = nearestMultipleOf(height, 16)/16 - 1; row >= 0; row--) {
+        for (row = nearestMultipleOf(height, 15)/15 - 1; row >= 0; row--) {
             ret = clSetKernelArg(trapezoid2CumulativeKernel, 0, sizeof(cl_mem), &energy_mem_obj);
             ret |= clSetKernelArg(trapezoid2CumulativeKernel, 1, localSize*localSize*sizeof(unsigned), NULL);
             ret |= clSetKernelArg(trapezoid2CumulativeKernel, 2, sizeof(int), &width);
@@ -229,7 +229,7 @@ void resizeImageParallel(const char *imagePath) {
 
             // run kernel
             ret = clEnqueueNDRangeKernel(command_queue, trapezoid2CumulativeKernel, 2, NULL,
-                                         global_size, local_size, 0, NULL, NULL);
+                    global_size, local_size, 0, NULL, NULL);
 
             // wait for kernel to finish
             clFinish(command_queue);
@@ -248,13 +248,13 @@ void resizeImageParallel(const char *imagePath) {
             clFinish(command_queue);
         }
 
-        if (i == 0) {
+        /*if (i == 0) {
             auto *energy = (unsigned *) malloc(imageSize * sizeof(unsigned));
             ret = clEnqueueReadBuffer(command_queue, energy_mem_obj, CL_TRUE, 0,
                     imageSize * sizeof(unsigned), energy, 0, NULL, NULL);
             saveUnsignedImage(energy, width, height, "../images/test.png");
             free(energy);
-        }
+        }*/
 
         /**
          * FIND SEAM - Part 1
@@ -652,7 +652,7 @@ void resizeImageParallel(const char *imagePath) {
     // save resized image
     FIBITMAP *imageOutBitmap = FreeImage_ConvertFromRawBits(imageRGB, width,
             height, width*3, 24, 0xFF, 0xFF, 0xFF, TRUE);
-    FreeImage_Save(FIF_PNG, imageOutBitmap, "../images/gpu_cut_image.png", 0);
+    FreeImage_Save(FIF_JPEG, imageOutBitmap, "../images/gpu_cut_image.png", 0);
     FreeImage_Unload(imageOutBitmap);
 
     // cleanup

@@ -178,11 +178,11 @@ __kernel void cumulativeTrapezoid1(__global unsigned *cumulative, __local unsign
     int cacheWidth = get_local_size(1);
 
     // mirror thread indexes
-    if (get_group_id(1) != 0 && y - x >= cacheHeight/2 && x < cacheWidth/4 && y >= cacheHeight/2) {
+    if (get_group_id(1) != 0 && y - x >= cacheHeight/2 + 1 && x < cacheWidth/4 && y >= cacheHeight/2) {
         globalI = cacheHeight*numGroup + cacheHeight - 1 - y;
         globalJ = cacheWidth * (get_group_id(1)*2-1) + cacheWidth - 1 - x;
         y = cacheHeight - 1 - y;
-    } else if (get_group_id(1) != get_global_size(1)/cacheWidth && y - (cacheWidth - 1 - x) >= cacheHeight/2) {
+    } else if (get_group_id(1) != get_global_size(1)/cacheWidth && y - (cacheWidth - 1 - x) >= cacheHeight/2 + 1) {
         globalI = cacheHeight*numGroup + cacheHeight - 1 - y;
         globalJ = cacheWidth * (get_group_id(1)*2+1) + cacheWidth - 1 - x;
         y = cacheHeight - 1 - y;
