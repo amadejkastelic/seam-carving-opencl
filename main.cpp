@@ -3,10 +3,10 @@
 //
 #include "header.h"
 
-#define MAX_SOURCE_SIZE	16384
-#define WORKGROUP_SIZE 32
+#define MAX_SOURCE_SIZE    16384*2
+#define WORKGROUP_SIZE 16
 // path to image
-#define IMAGE_PATH "../images/image.jpg"
+#define IMAGE_PATH "images/image.jpg"
 // wanted image size
 #define DESIRED_WIDTH 400
 #define DESIRED_HEIGHT 800
@@ -18,7 +18,7 @@ int main() {
     resizeImageParallel(IMAGE_PATH);
 
     // Serial algorithm
-    resizeImageSerial(IMAGE_PATH);
+    //resizeImageSerial(IMAGE_PATH);
 
     return 0;
 }
@@ -48,13 +48,12 @@ void resizeImageParallel(const char *imagePath) {
     char *source_str;
     size_t source_size;
 
-    fp = fopen("../kernel.cpp", "r");
-    if (!fp)
-    {
+    fp = fopen("kernel.cpp", "r");
+    if (!fp) {
         fprintf(stderr, "Kernel file missing.\n");
         exit(1);
     }
-    source_str = (char*)malloc(MAX_SOURCE_SIZE);
+    source_str = (char *) malloc(MAX_SOURCE_SIZE);
     source_size = fread(source_str, 1, MAX_SOURCE_SIZE, fp);
     source_str[source_size] = '\0';
     fclose(fp);
@@ -72,7 +71,7 @@ void resizeImageParallel(const char *imagePath) {
     cl_device_id device_id[10];
     cl_uint ret_num_devices;
     ret = clGetDeviceIDs(platform_id[0], CL_DEVICE_TYPE_GPU, 10,
-            device_id, &ret_num_devices);
+                         device_id, &ret_num_devices);
 
     clGetPlatformInfo(platform_id[0], CL_PLATFORM_NAME, sizeof(buf), &buf, NULL);
 
@@ -89,10 +88,10 @@ void resizeImageParallel(const char *imagePath) {
     // get max workgroup size
     cl_uint max_work_item_dimensions;
     clGetDeviceInfo(device_id[0], CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS, sizeof(max_work_item_dimensions),
-            &max_work_item_dimensions, NULL);
+                    &max_work_item_dimensions, NULL);
     auto *size = (size_t *) (malloc(sizeof(size_t) * max_work_item_dimensions));
     ret = clGetDeviceInfo(device_id[0], CL_DEVICE_MAX_WORK_ITEM_SIZES, sizeof(size_t) * max_work_item_dimensions,
-            size, NULL);
+                          size, NULL);
     printf("Max work size: %lu\n", size[0]);
 
     cl_context context = clCreateContext(NULL, ret_num_devices, &device_id[0], NULL, NULL, &ret);
@@ -113,10 +112,10 @@ void resizeImageParallel(const char *imagePath) {
     // logs
     size_t build_log_len;
     ret = clGetProgramBuildInfo(program, device_id[0], CL_PROGRAM_BUILD_LOG,
-            0, NULL, &build_log_len);
-    char *build_log = (char*) malloc(sizeof(char)*(build_log_len + 1));
+                                0, NULL, &build_log_len);
+    char *build_log = (char *) malloc(sizeof(char) * (build_log_len + 1));
     ret = clGetProgramBuildInfo(program, device_id[0], CL_PROGRAM_BUILD_LOG,
-            build_log_len, build_log, NULL);
+                                build_log_len, build_log, NULL);
     printf("%s\n", build_log);
     free(build_log);
 
@@ -138,42 +137,43 @@ void resizeImageParallel(const char *imagePath) {
 
     // allocate gpu memory (we have enough - 8GB)
     cl_mem gray_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE,
-            imageSize * sizeof(unsigned char), NULL, &ret);
+                                         imageSize * sizeof(unsigned char), NULL, &ret);
     cl_mem energy_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE,
-            imageSize * sizeof(unsigned), NULL, &ret);
+                                           imageSize * sizeof(unsigned), NULL, &ret);
     cl_mem gray_copy_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE,
-            imageSize * sizeof(unsigned char), NULL, &ret);
+                                              imageSize * sizeof(unsigned char), NULL, &ret);
     cl_mem RGB_mem_obj = clCreateBuffer(context, CL_MEM_READ_ONLY,
-            imageSize * 3 * sizeof(unsigned char), NULL, &ret);
+                                        imageSize * 3 * sizeof(unsigned char), NULL, &ret);
     cl_mem RGB_copy_mem_obj = clCreateBuffer(context, CL_MEM_WRITE_ONLY,
-            imageSize * 3 * sizeof(unsigned char), NULL, &ret);
+                                             imageSize * 3 * sizeof(unsigned char), NULL, &ret);
 
     // write to gpu memory
     clEnqueueWriteBuffer(command_queue, gray_mem_obj, CL_FALSE, 0,
-            imageSize * sizeof(unsigned char), imageGray, 0, NULL, NULL);
+                         imageSize * sizeof(unsigned char), imageGray, 0, NULL, NULL);
     clEnqueueWriteBuffer(command_queue, RGB_mem_obj, CL_FALSE, 0,
-            imageSize * 3 * sizeof(unsigned char), imageRGB, 0, NULL, NULL);
+                         imageSize * 3 * sizeof(unsigned char), imageRGB, 0, NULL, NULL);
 
     // start measuring time
     clock_gettime(CLOCK_MONOTONIC, &start);
 
     // calculate
+    //printf("calculating\n");
     for (i = 0; i < (globalWidth - DESIRED_WIDTH); i++) {
         /**
          * SOBEL
          */
         // group sizes
-        local_size[0] = WORKGROUP_SIZE; local_size[1] = WORKGROUP_SIZE;
-        num_groups[0] = (size_t)ceil((double)height/local_size[0]);
-        num_groups[1] = (size_t)ceil((double)width/local_size[1]);
+        local_size[0] = WORKGROUP_SIZE;
+        local_size[1] = WORKGROUP_SIZE;
+        num_groups[0] = (size_t) ceil((double) height / local_size[0]);
+        num_groups[1] = (size_t) ceil((double) width / local_size[1]);
         global_size[0] = local_size[0] * num_groups[0];
         global_size[1] = local_size[1] * num_groups[1];
 
         // set kernel args
-        ret = clSetKernelArg(sobelKernel, 0, sizeof(cl_mem), (void *)&gray_mem_obj);
-        ret |= clSetKernelArg(sobelKernel, 1, sizeof(cl_mem), (void *)&energy_mem_obj);
-        ret |= clSetKernelArg(sobelKernel, 2, sizeof(unsigned char) * local_size[0] * local_size[1] +
-                (2 * local_size[0] + 2 * local_size[1]), NULL); //cache local memory
+        ret = clSetKernelArg(sobelKernel, 0, sizeof(cl_mem), (void *) &gray_mem_obj);
+        ret |= clSetKernelArg(sobelKernel, 1, sizeof(cl_mem), (void *) &energy_mem_obj);
+        ret |= clSetKernelArg(sobelKernel, 2, sizeof(unsigned char) * (local_size[0]+2) * (local_size[1]+2), NULL); //cache local memory
         ret |= clSetKernelArg(sobelKernel, 3, sizeof(int), &width);
         ret |= clSetKernelArg(sobelKernel, 4, sizeof(int), &height);
 
@@ -183,11 +183,11 @@ void resizeImageParallel(const char *imagePath) {
         // wait for sobel to finish
         clFinish(command_queue);
 
-        if (DEBUG == 1 && i == 5) {
+        if (DEBUG == 0 && i == 20) {
             auto *energy = (unsigned *) malloc(imageSize * sizeof(unsigned));
             ret = clEnqueueReadBuffer(command_queue, energy_mem_obj, CL_TRUE, 0,
-                    imageSize*sizeof(unsigned), energy, 0, NULL, NULL);
-            saveUnsignedImage(energy, width, height, "../images/sobel_gpu_image2.png");
+                                      imageSize * sizeof(unsigned), energy, 0, NULL, NULL);
+            saveUnsignedImage(energy, width, height, "images/sobel_gpu_image2.png");
             free(energy);
         }
 
@@ -214,47 +214,51 @@ void resizeImageParallel(const char *imagePath) {
             clFinish(command_queue);
         }*/
 
-        local_size[0] = 15; local_size[1] = WORKGROUP_SIZE;
-        global_size[0] = 15;
-        global_size[1] = nearestMultipleOf(width/2, WORKGROUP_SIZE);
+        local_size[0] = 7;
+        local_size[1] = WORKGROUP_SIZE;
+        global_size[0] = 7;
+        global_size[1] = nearestMultipleOf(width / 2, WORKGROUP_SIZE);
 
         size_t offset[2] = {0, WORKGROUP_SIZE};
 
-        for (row = nearestMultipleOf(height, 15)/15 - 1; row >= 0; row--) {
+        //printf("all set\n");
+
+        for (row = nearestMultipleOf(height, 7) / 7 - 1; row >= 0; row--) {
             ret = clSetKernelArg(trapezoid2CumulativeKernel, 0, sizeof(cl_mem), &energy_mem_obj);
-            ret |= clSetKernelArg(trapezoid2CumulativeKernel, 1, localSize*localSize*sizeof(unsigned), NULL);
+            ret |= clSetKernelArg(trapezoid2CumulativeKernel, 1, localSize * localSize * sizeof(unsigned), NULL);
             ret |= clSetKernelArg(trapezoid2CumulativeKernel, 2, sizeof(int), &width);
             ret |= clSetKernelArg(trapezoid2CumulativeKernel, 3, sizeof(int), &height);
             ret |= clSetKernelArg(trapezoid2CumulativeKernel, 4, sizeof(int), &row);
 
             // run kernel
             ret = clEnqueueNDRangeKernel(command_queue, trapezoid2CumulativeKernel, 2, NULL,
-                    global_size, local_size, 0, NULL, NULL);
+                                         global_size, local_size, 0, NULL, NULL);
 
             // wait for kernel to finish
             clFinish(command_queue);
 
             ret = clSetKernelArg(trapezoid1CumulativeKernel, 0, sizeof(cl_mem), &energy_mem_obj);
-            ret |= clSetKernelArg(trapezoid1CumulativeKernel, 1, localSize*localSize*sizeof(unsigned), NULL);
+            ret |= clSetKernelArg(trapezoid1CumulativeKernel, 1, localSize * localSize * sizeof(unsigned), NULL);
             ret |= clSetKernelArg(trapezoid1CumulativeKernel, 2, sizeof(int), &width);
             ret |= clSetKernelArg(trapezoid1CumulativeKernel, 3, sizeof(int), &height);
             ret |= clSetKernelArg(trapezoid1CumulativeKernel, 4, sizeof(int), &row);
 
             // run kernel
             ret = clEnqueueNDRangeKernel(command_queue, trapezoid1CumulativeKernel, 2, NULL,
-                    global_size, local_size, 0, NULL, NULL);
+                                         global_size, local_size, 0, NULL, NULL);
 
             // wait for kernel to finish
             clFinish(command_queue);
         }
 
-        /*if (i == 0) {
+        if (i == 0) {
             auto *energy = (unsigned *) malloc(imageSize * sizeof(unsigned));
             ret = clEnqueueReadBuffer(command_queue, energy_mem_obj, CL_TRUE, 0,
                     imageSize * sizeof(unsigned), energy, 0, NULL, NULL);
-            saveUnsignedImage(energy, width, height, "../images/test.png");
+            saveUnsignedImage(energy, width, height, "images/test.png");
             free(energy);
-        }*/
+            return;
+        }
 
         /**
          * FIND SEAM - Part 1
@@ -262,14 +266,14 @@ void resizeImageParallel(const char *imagePath) {
          */
         // group sizes
         localSize = WORKGROUP_SIZE;
-        numGroups = (size_t)ceil((double) width/localSize);
-        globalSize = localSize*numGroups;
+        numGroups = (size_t) ceil((double) width / localSize);
+        globalSize = localSize * numGroups;
 
         // allocate gpu memory
         cl_mem reduction_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                numGroups * sizeof(unsigned), NULL, &ret);
+                                                  numGroups * sizeof(unsigned), NULL, &ret);
         cl_mem reduction_index_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                numGroups * sizeof(int), NULL, &ret);
+                                                        numGroups * sizeof(int), NULL, &ret);
 
         // set kernel args
         ret = clSetKernelArg(findMinKernel, 0, sizeof(cl_mem), &energy_mem_obj);
@@ -294,7 +298,7 @@ void resizeImageParallel(const char *imagePath) {
 
         // allocate gpu memory
         cl_mem backtrack_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                height * sizeof(int), NULL, &ret);
+                                                  height * sizeof(int), NULL, &ret);
 
         // set kernel args
         ret = clSetKernelArg(findSeamKernel, 0, sizeof(cl_mem), &energy_mem_obj);
@@ -330,9 +334,10 @@ void resizeImageParallel(const char *imagePath) {
          * DELETE SEAM
          */
         // group sizes - same as sobel
-        local_size[0] = WORKGROUP_SIZE; local_size[1] = WORKGROUP_SIZE;
-        num_groups[0] = (size_t)ceil((double)height/local_size[0]);
-        num_groups[1] = (size_t)ceil((double)width/local_size[1]);
+        local_size[0] = WORKGROUP_SIZE;
+        local_size[1] = WORKGROUP_SIZE;
+        num_groups[0] = (size_t) ceil((double) height / local_size[0]);
+        num_groups[1] = (size_t) ceil((double) width / local_size[1]);
         global_size[0] = local_size[0] * num_groups[0];
         global_size[1] = local_size[1] * num_groups[1];
 
@@ -359,34 +364,39 @@ void resizeImageParallel(const char *imagePath) {
 
         // copy new image to old one
         clEnqueueCopyBuffer(command_queue, gray_copy_mem_obj, gray_mem_obj, 0, 0,
-                width * height * sizeof(unsigned char), 0, NULL, NULL);
+                            width * height * sizeof(unsigned char), 0, NULL, NULL);
         clEnqueueCopyBuffer(command_queue, RGB_copy_mem_obj, RGB_mem_obj, 0, 0,
-                width * height * 3 * sizeof(unsigned char), 0, NULL, NULL);
+                            width * height * 3 * sizeof(unsigned char), 0, NULL, NULL);
         clFinish(command_queue);
-    } if (DESIRED_WIDTH >= globalWidth) {
+
+        //printf("%d", width);
+    }
+    printf("rotating\n");
+    if (DESIRED_WIDTH >= globalWidth) {
         clEnqueueCopyBuffer(command_queue, gray_mem_obj, gray_copy_mem_obj, 0, 0,
-                width * height * sizeof(unsigned char), 0, NULL, NULL);
+                            width * height * sizeof(unsigned char), 0, NULL, NULL);
         clEnqueueCopyBuffer(command_queue, RGB_mem_obj, RGB_copy_mem_obj, 0, 0,
-                width * height * 3 * sizeof(unsigned char), 0, NULL, NULL);
+                            width * height * 3 * sizeof(unsigned char), 0, NULL, NULL);
         clFinish(command_queue);
     }
-
+    printf("resizing again\n");
     if (DESIRED_HEIGHT < globalHeight) {
         /**
          * IMAGE ROTATION
          */
         // group sizes
-        local_size[0] = WORKGROUP_SIZE; local_size[1] = WORKGROUP_SIZE;
+        local_size[0] = WORKGROUP_SIZE;
+        local_size[1] = WORKGROUP_SIZE;
         global_size[0] = nearestMultipleOf(height, WORKGROUP_SIZE);
         global_size[1] = nearestMultipleOf(width, WORKGROUP_SIZE);
 
         // set kernel args
         ret = clSetKernelArg(transposeKernel, 0, sizeof(cl_mem), &gray_mem_obj);
         ret |= clSetKernelArg(transposeKernel, 1, sizeof(cl_mem), &gray_copy_mem_obj);
-        ret |= clSetKernelArg(transposeKernel, 2, WORKGROUP_SIZE*WORKGROUP_SIZE*sizeof(unsigned char), NULL);
+        ret |= clSetKernelArg(transposeKernel, 2, WORKGROUP_SIZE * WORKGROUP_SIZE * sizeof(unsigned char), NULL);
         ret |= clSetKernelArg(transposeKernel, 3, sizeof(cl_mem), &RGB_mem_obj);
         ret |= clSetKernelArg(transposeKernel, 4, sizeof(cl_mem), &RGB_copy_mem_obj);
-        ret |= clSetKernelArg(transposeKernel, 5, WORKGROUP_SIZE*WORKGROUP_SIZE*3*sizeof(unsigned char), NULL);
+        ret |= clSetKernelArg(transposeKernel, 5, WORKGROUP_SIZE * WORKGROUP_SIZE * 3 * sizeof(unsigned char), NULL);
         ret |= clSetKernelArg(transposeKernel, 6, sizeof(int), &width);
         ret |= clSetKernelArg(transposeKernel, 7, sizeof(int), &height);
 
@@ -417,7 +427,7 @@ void resizeImageParallel(const char *imagePath) {
             ret = clSetKernelArg(sobelKernel, 0, sizeof(cl_mem), (void *) &gray_copy_mem_obj);
             ret |= clSetKernelArg(sobelKernel, 1, sizeof(cl_mem), (void *) &energy_mem_obj);
             ret |= clSetKernelArg(sobelKernel, 2, sizeof(unsigned char) * local_size[0] * local_size[1] +
-                    (2 * local_size[0] + 2 * local_size[1]), NULL); //cache local memory
+                                                  (2 * local_size[0] + 2 * local_size[1]), NULL); //cache local memory
             ret |= clSetKernelArg(sobelKernel, 3, sizeof(int), &width);
             ret |= clSetKernelArg(sobelKernel, 4, sizeof(int), &height);
 
@@ -450,28 +460,29 @@ void resizeImageParallel(const char *imagePath) {
                 clFinish(command_queue);
             }*/
 
-            local_size[0] = 16; local_size[1] = WORKGROUP_SIZE;
+            local_size[0] = 16;
+            local_size[1] = WORKGROUP_SIZE;
             global_size[0] = 16;
-            global_size[1] = nearestMultipleOf(width/2, WORKGROUP_SIZE);
+            global_size[1] = nearestMultipleOf(width / 2, WORKGROUP_SIZE);
 
             size_t offset[2] = {0, WORKGROUP_SIZE};
 
-            for (row = nearestMultipleOf(height, 16)/16 - 1; row >= 0; row--) {
+            for (row = nearestMultipleOf(height, 16) / 16 - 1; row >= 0; row--) {
                 ret = clSetKernelArg(trapezoid2CumulativeKernel, 0, sizeof(cl_mem), &energy_mem_obj);
-                ret |= clSetKernelArg(trapezoid2CumulativeKernel, 1, localSize*localSize*sizeof(unsigned), NULL);
+                ret |= clSetKernelArg(trapezoid2CumulativeKernel, 1, localSize * localSize * sizeof(unsigned), NULL);
                 ret |= clSetKernelArg(trapezoid2CumulativeKernel, 2, sizeof(int), &width);
                 ret |= clSetKernelArg(trapezoid2CumulativeKernel, 3, sizeof(int), &height);
                 ret |= clSetKernelArg(trapezoid2CumulativeKernel, 4, sizeof(int), &row);
 
                 // run kernel
                 ret = clEnqueueNDRangeKernel(command_queue, trapezoid2CumulativeKernel, 2, NULL,
-                        global_size, local_size, 0, NULL, NULL);
+                                             global_size, local_size, 0, NULL, NULL);
 
                 // wait for kernel to finish
                 clFinish(command_queue);
 
                 ret = clSetKernelArg(trapezoid1CumulativeKernel, 0, sizeof(cl_mem), &energy_mem_obj);
-                ret |= clSetKernelArg(trapezoid1CumulativeKernel, 1, localSize*localSize*sizeof(unsigned), NULL);
+                ret |= clSetKernelArg(trapezoid1CumulativeKernel, 1, localSize * localSize * sizeof(unsigned), NULL);
                 ret |= clSetKernelArg(trapezoid1CumulativeKernel, 2, sizeof(int), &width);
                 ret |= clSetKernelArg(trapezoid1CumulativeKernel, 3, sizeof(int), &height);
                 ret |= clSetKernelArg(trapezoid1CumulativeKernel, 4, sizeof(int), &row);
@@ -503,9 +514,9 @@ void resizeImageParallel(const char *imagePath) {
 
             // allocate gpu memory
             cl_mem reduction_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                    numGroups * sizeof(unsigned), NULL, &ret);
+                                                      numGroups * sizeof(unsigned), NULL, &ret);
             cl_mem reduction_index_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                    numGroups * sizeof(int), NULL, &ret);
+                                                            numGroups * sizeof(int), NULL, &ret);
 
             // set kernel args
             ret = clSetKernelArg(findMinKernel, 0, sizeof(cl_mem), &energy_mem_obj);
@@ -530,7 +541,7 @@ void resizeImageParallel(const char *imagePath) {
 
             // allocate gpu memory
             cl_mem backtrack_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                    height * sizeof(int), NULL, &ret);
+                                                      height * sizeof(int), NULL, &ret);
 
             // set kernel args
             ret = clSetKernelArg(findSeamKernel, 0, sizeof(cl_mem), &energy_mem_obj);
@@ -556,7 +567,7 @@ void resizeImageParallel(const char *imagePath) {
             if (DEBUG == 1 && i == 1) {
                 auto *backtrack = (int *) malloc(height * sizeof(unsigned));
                 ret = clEnqueueReadBuffer(command_queue, backtrack_mem_obj, CL_TRUE, 0,
-                        height * sizeof(unsigned), backtrack, 0, NULL, NULL);
+                                          height * sizeof(unsigned), backtrack, 0, NULL, NULL);
                 for (int j = 0; j < height; j++) {
                     printf("%d, ", backtrack[j]);
                 }
@@ -584,7 +595,8 @@ void resizeImageParallel(const char *imagePath) {
             ret |= clSetKernelArg(deleteSeamKernel, 6, sizeof(int), &height);
 
             // run kernel
-            ret = clEnqueueNDRangeKernel(command_queue, deleteSeamKernel, 2, NULL, global_size, local_size, 0, NULL, NULL);
+            ret = clEnqueueNDRangeKernel(command_queue, deleteSeamKernel, 2, NULL, global_size, local_size, 0, NULL,
+                                         NULL);
 
             // wait for kernel to finish
             clFinish(command_queue);
@@ -597,26 +609,27 @@ void resizeImageParallel(const char *imagePath) {
 
             // copy new image to old
             clEnqueueCopyBuffer(command_queue, gray_mem_obj, gray_copy_mem_obj, 0, 0,
-                    width * height * sizeof(unsigned char), 0, NULL, NULL);
+                                width * height * sizeof(unsigned char), 0, NULL, NULL);
             clEnqueueCopyBuffer(command_queue, RGB_mem_obj, RGB_copy_mem_obj, 0, 0,
-                    width * height * 3 * sizeof(unsigned char), 0, NULL, NULL);
+                                width * height * 3 * sizeof(unsigned char), 0, NULL, NULL);
             clFinish(command_queue);
         }
 
         //rotate back
         // group sizes
         // group sizes
-        local_size[0] = WORKGROUP_SIZE; local_size[1] = WORKGROUP_SIZE;
+        local_size[0] = WORKGROUP_SIZE;
+        local_size[1] = WORKGROUP_SIZE;
         global_size[0] = nearestMultipleOf(height, WORKGROUP_SIZE);
         global_size[1] = nearestMultipleOf(width, WORKGROUP_SIZE);
 
         // set kernel args
         ret = clSetKernelArg(transposeKernel, 0, sizeof(cl_mem), &gray_copy_mem_obj);
         ret |= clSetKernelArg(transposeKernel, 1, sizeof(cl_mem), &gray_mem_obj);
-        ret |= clSetKernelArg(transposeKernel, 2, WORKGROUP_SIZE*WORKGROUP_SIZE*sizeof(unsigned char), NULL);
+        ret |= clSetKernelArg(transposeKernel, 2, WORKGROUP_SIZE * WORKGROUP_SIZE * sizeof(unsigned char), NULL);
         ret |= clSetKernelArg(transposeKernel, 3, sizeof(cl_mem), &RGB_copy_mem_obj);
         ret |= clSetKernelArg(transposeKernel, 4, sizeof(cl_mem), &RGB_mem_obj);
-        ret |= clSetKernelArg(transposeKernel, 5, WORKGROUP_SIZE*WORKGROUP_SIZE*3*sizeof(unsigned char), NULL);
+        ret |= clSetKernelArg(transposeKernel, 5, WORKGROUP_SIZE * WORKGROUP_SIZE * 3 * sizeof(unsigned char), NULL);
         ret |= clSetKernelArg(transposeKernel, 6, sizeof(int), &width);
         ret |= clSetKernelArg(transposeKernel, 7, sizeof(int), &height);
 
@@ -625,18 +638,19 @@ void resizeImageParallel(const char *imagePath) {
 
         temp = height;
         height = width;
-        width = temp;imageSize = width*height;
+        width = temp;
+        imageSize = width * height;
 
     }
 
     // read gpu memory to host memory
-    imageSize = width*height;
+    imageSize = width * height;
     if (DESIRED_HEIGHT < globalHeight) {
         ret = clEnqueueReadBuffer(command_queue, RGB_mem_obj, CL_TRUE, 0,
-                imageSize * 3 * sizeof(unsigned char), imageRGB, 0, NULL, NULL);
+                                  imageSize * 3 * sizeof(unsigned char), imageRGB, 0, NULL, NULL);
     } else {
         ret = clEnqueueReadBuffer(command_queue, RGB_copy_mem_obj, CL_TRUE, 0,
-                imageSize * 3 * sizeof(unsigned char), imageRGB, 0, NULL, NULL);
+                                  imageSize * 3 * sizeof(unsigned char), imageRGB, 0, NULL, NULL);
     }
 
     // stop measuring time
@@ -651,8 +665,8 @@ void resizeImageParallel(const char *imagePath) {
 
     // save resized image
     FIBITMAP *imageOutBitmap = FreeImage_ConvertFromRawBits(imageRGB, width,
-            height, width*3, 24, 0xFF, 0xFF, 0xFF, TRUE);
-    FreeImage_Save(FIF_JPEG, imageOutBitmap, "../images/gpu_cut_image.png", 0);
+                                                            height, width * 3, 24, 0xFF, 0xFF, 0xFF, TRUE);
+    FreeImage_Save(FIF_JPEG, imageOutBitmap, "images/gpu_cut_image.png", 0);
     FreeImage_Unload(imageOutBitmap);
 
     // cleanup
@@ -711,9 +725,9 @@ void resizeImageSerial(const char *imagePath) {
 
     // load image to memory (gray for sobel and rgb for carving)
     FreeImage_ConvertToRawBits(imageGray, imageBitmapGray, pitchGray, 8,
-            0xFF, 0xFF, 0xFF, TRUE);
+                               0xFF, 0xFF, 0xFF, TRUE);
     FreeImage_ConvertToRawBits(imageRGB, imageBitmap, pitchRGB, 24,
-            0xFF, 0xFF, 0xFF, TRUE);
+                               0xFF, 0xFF, 0xFF, TRUE);
 
     // remove read image
     FreeImage_Unload(imageBitmapGray);
@@ -723,8 +737,11 @@ void resizeImageSerial(const char *imagePath) {
     clock_gettime(CLOCK_MONOTONIC, &start);
 
     // find and delete seams (width)
+    printf("starting work resizing %d to %d \n", globalWidth, DESIRED_WIDTH);
+
     backtrack = (int *) malloc(height * sizeof(int));
     for (i = 0; i < (globalWidth - DESIRED_WIDTH); i++) {
+
         sobelCPU(imageGray, energy, width, height);
         cumulativeCPU(energy, width, height);
         findSeam(energy, backtrack, width, height);
@@ -736,17 +753,17 @@ void resizeImageSerial(const char *imagePath) {
     if (DESIRED_HEIGHT < globalHeight) {
         // rotate images
         FIBITMAP *rotatedGrayImage = FreeImage_ConvertFromRawBits(imageGray, width,
-                height, width, 8, 0xFF, 0xFF, 0xFF, TRUE);
+                                                                  height, width, 8, 0xFF, 0xFF, 0xFF, TRUE);
         FIBITMAP *rotatedRBGImage = FreeImage_ConvertFromRawBits(imageRGB, width,
-                height, width * 3, 24, 0xFF, 0xFF, 0xFF, TRUE);
+                                                                 height, width * 3, 24, 0xFF, 0xFF, 0xFF, TRUE);
 
         rotatedGrayImage = FreeImage_Rotate(rotatedGrayImage, 90, NULL);
         rotatedRBGImage = FreeImage_Rotate(rotatedRBGImage, 90, NULL);
 
         FreeImage_ConvertToRawBits(imageGray, rotatedGrayImage, height, 8,
-                0xFF, 0xFF, 0xFF, TRUE);
+                                   0xFF, 0xFF, 0xFF, TRUE);
         FreeImage_ConvertToRawBits(imageRGB, rotatedRBGImage, height * 3, 24,
-                0xFF, 0xFF, 0xFF, TRUE);
+                                   0xFF, 0xFF, 0xFF, TRUE);
 
         // find and delete seams (height)
         backtrack = (int *) malloc(width * sizeof(int));
@@ -756,18 +773,19 @@ void resizeImageSerial(const char *imagePath) {
             findSeam(energy, backtrack, height, width);
             deleteSeam(imageGray, imageRGB, backtrack, height, width);
             height--;
+            printf("seam deleted \n");
         }
         free(backtrack);
 
         // rotate image back and save it
         FIBITMAP *imageOutBitmap = FreeImage_ConvertFromRawBits(imageRGB, height,
-                width, height*3, 24, 0xFF, 0xFF, 0xFF, TRUE);
+                                                                width, height * 3, 24, 0xFF, 0xFF, 0xFF, TRUE);
         imageOutBitmap = FreeImage_Rotate(imageOutBitmap, -90, NULL);
         FreeImage_Save(FIF_PNG, imageOutBitmap, "../images/cpu_cut_image.png", 0);
         FreeImage_Unload(imageOutBitmap);
     } else {
         FIBITMAP *imageOutBitmap = FreeImage_ConvertFromRawBits(imageRGB, width,
-                height, width*3, 24, 0xFF, 0xFF, 0xFF, TRUE);
+                                                                height, width * 3, 24, 0xFF, 0xFF, 0xFF, TRUE);
         FreeImage_Save(FIF_PNG, imageOutBitmap, "../images/cpu_cut_image.png", 0);
         FreeImage_Unload(imageOutBitmap);
     }
