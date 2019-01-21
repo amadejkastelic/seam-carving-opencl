@@ -214,16 +214,16 @@ void resizeImageParallel(const char *imagePath) {
             clFinish(command_queue);
         }*/
 
-        local_size[0] = 7;
+        local_size[0] = 13;
         local_size[1] = WORKGROUP_SIZE;
-        global_size[0] = 7;
+        global_size[0] = 13;
         global_size[1] = nearestMultipleOf(width / 2, WORKGROUP_SIZE);
 
         size_t offset[2] = {0, WORKGROUP_SIZE};
 
         //printf("all set\n");
 
-        for (row = nearestMultipleOf(height, 7) / 7 - 1; row >= 0; row--) {
+        for (row = nearestMultipleOf(height, 13) / 13 - 1; row >= 0; row--) {
             ret = clSetKernelArg(trapezoid2CumulativeKernel, 0, sizeof(cl_mem), &energy_mem_obj);
             ret |= clSetKernelArg(trapezoid2CumulativeKernel, 1, localSize * localSize * sizeof(unsigned), NULL);
             ret |= clSetKernelArg(trapezoid2CumulativeKernel, 2, sizeof(int), &width);
@@ -250,7 +250,7 @@ void resizeImageParallel(const char *imagePath) {
             // wait for kernel to finish
             clFinish(command_queue);
         }
-
+        /*
         if (i == 0) {
             auto *energy = (unsigned *) malloc(imageSize * sizeof(unsigned));
             ret = clEnqueueReadBuffer(command_queue, energy_mem_obj, CL_TRUE, 0,
@@ -258,7 +258,7 @@ void resizeImageParallel(const char *imagePath) {
             saveUnsignedImage(energy, width, height, "images/test.png");
             free(energy);
             return;
-        }
+        }*/
 
         /**
          * FIND SEAM - Part 1

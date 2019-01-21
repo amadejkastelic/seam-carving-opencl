@@ -229,11 +229,11 @@ __kernel void cumulativeTrapezoid1(__global unsigned *cumulative, __local unsign
     int cacheWidth = get_local_size(1);
 
     // mirror thread indexes
-    if (get_group_id(1) != 0 && y - x >= cacheHeight/2 + 1 && x < cacheWidth/4 && y >= cacheHeight/2) {
+    if (get_group_id(1) != 0 && y - x > cacheHeight/2.0f-1) {
         globalI = cacheHeight*numGroup + cacheHeight - 1 - y;
         globalJ = cacheWidth * (get_group_id(1)*2-1) + cacheWidth - 1 - x;
         y = cacheHeight - 1 - y;
-    } else if (get_group_id(1) != get_global_size(1)/cacheWidth && y - (cacheWidth - 1 - x) >= cacheHeight/2 + 1) {
+    } else if (get_group_id(1) != get_global_size(1)/cacheWidth && x+y >= cacheWidth + cacheHeight/2.0f - 1) {
         globalI = cacheHeight*numGroup + cacheHeight - 1 - y;
         globalJ = cacheWidth * (get_group_id(1)*2+1) + cacheWidth - 1 - x;
         y = cacheHeight - 1 - y;
@@ -258,14 +258,14 @@ __kernel void cumulativeTrapezoid1(__global unsigned *cumulative, __local unsign
 
     for (int k = cacheHeight-1; k >= 0; k--) {
         if (y == k && globalI < height-1 && globalJ < width) {
-            cumulative[globalIndex] = 255; /* += minimum(
+            cumulative[globalIndex] += minimum(
                     //getCachedPixelUnsigned(cache, cacheWidth, cacheHeight, y-1, x-1, cumulative, width, height, globalI-1, globalJ-1),
                     //getCachedPixelUnsigned(cache, cacheWidth, cacheHeight, y-1, x, cumulative, width, height, globalI-1, globalJ),
                     //getCachedPixelUnsigned(cache, cacheWidth, cacheHeight, y-1, x+1, cumulative, width, height, globalI-1, globalJ+1)
                     getPixelUnsigned(cumulative, width, height, globalI+1, globalJ-1, UINT_MAX),
                     getPixelUnsigned(cumulative, width, height, globalI+1, globalJ, UINT_MAX),
                     getPixelUnsigned(cumulative, width, height, globalI+1, globalJ+1, UINT_MAX)
-            );*/
+            );
         }
         barrier(CLK_GLOBAL_MEM_FENCE);
     }
@@ -290,11 +290,11 @@ __kernel void cumulativeTrapezoid2(__global unsigned *cumulative, __local unsign
     int cacheWidth = get_local_size(1);
 
     // mirror thread indexes
-    if (y + x < cacheHeight/2 && x < cacheWidth/4 && y < cacheHeight/2) {
+    if (y + x <= cacheHeight/2.0f - 1) {
         globalI = cacheHeight*numGroup + cacheHeight - 1 - y;
         globalJ = cacheWidth * ((get_group_id(1)*2+1)-1) + cacheWidth - 1 - x;
         y = cacheHeight - 1 - y;
-    } else if (get_group_id(1)+1 != get_global_size(1)/cacheWidth && y + cacheWidth - 1 - x < cacheHeight/2) {
+    } else if (get_group_id(1)+1 != get_global_size(1)/cacheWidth && y + cacheWidth - 1 - x < cacheHeight/2.0f) {
         globalI = cacheHeight*numGroup + cacheHeight - 1 - y;
         globalJ = cacheWidth * ((get_group_id(1)*2+1)+1) + cacheWidth - 1 - x;
         y = cacheHeight - 1 - y;
