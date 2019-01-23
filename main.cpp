@@ -4,12 +4,12 @@
 #include "header.h"
 
 #define MAX_SOURCE_SIZE    16384*2
-#define WORKGROUP_SIZE 8
+#define WORKGROUP_SIZE 16
 // path to image
-#define IMAGE_PATH "images/image.jpg"
+#define IMAGE_PATH "../images/image.jpg"
 // wanted image size
 #define DESIRED_WIDTH 400
-#define DESIRED_HEIGHT 800
+#define DESIRED_HEIGHT 868
 // debug mode
 #define DEBUG 0
 
@@ -48,7 +48,7 @@ void resizeImageParallel(const char *imagePath) {
     char *source_str;
     size_t source_size;
 
-    fp = fopen("kernel.cpp", "r");
+    fp = fopen("../kernel.cpp", "r");
     if (!fp) {
         fprintf(stderr, "Kernel file missing.\n");
         exit(1);
@@ -187,7 +187,7 @@ void resizeImageParallel(const char *imagePath) {
             auto *energy = (unsigned *) malloc(imageSize * sizeof(unsigned));
             ret = clEnqueueReadBuffer(command_queue, energy_mem_obj, CL_TRUE, 0,
                                       imageSize * sizeof(unsigned), energy, 0, NULL, NULL);
-            saveUnsignedImage(energy, width, height, "images/sobel_gpu_image2.png");
+            saveUnsignedImage(energy, width, height, "../images/sobel_gpu_image2.png");
             free(energy);
         }
 
@@ -213,7 +213,7 @@ void resizeImageParallel(const char *imagePath) {
             // wait for kernel to finish
             clFinish(command_queue);
         }*/
-        int trapezHeight = 3;
+        size_t trapezHeight = 13;
         local_size[0] = trapezHeight;
         local_size[1] = WORKGROUP_SIZE;
         global_size[0] = trapezHeight;
@@ -232,7 +232,7 @@ void resizeImageParallel(const char *imagePath) {
 
             // run kernel
             ret = clEnqueueNDRangeKernel(command_queue, trapezoid2CumulativeKernel, 2, NULL,
-                                         global_size, local_size, 0, NULL, NULL);
+                    global_size, local_size, 0, NULL, NULL);
 
             // wait for kernel to finish
             clFinish(command_queue);
@@ -251,14 +251,14 @@ void resizeImageParallel(const char *imagePath) {
             // wait for kernel to finish
             clFinish(command_queue);
         }
-        if (i == -1) {
+        /*if (i == 0) {
             auto *energy = (unsigned *) malloc(imageSize * sizeof(unsigned));
             ret = clEnqueueReadBuffer(command_queue, energy_mem_obj, CL_TRUE, 0,
                     imageSize * sizeof(unsigned), energy, 0, NULL, NULL);
-            saveUnsignedImage(energy, width, height, "images/test.png");
+            saveUnsignedImage(energy, width, height, "../images/test.png");
             free(energy);
             return;
-        }
+        }*/
 
         /**
          * FIND SEAM - Part 1
@@ -666,7 +666,7 @@ void resizeImageParallel(const char *imagePath) {
     // save resized image
     FIBITMAP *imageOutBitmap = FreeImage_ConvertFromRawBits(imageRGB, width,
                                                             height, width * 3, 24, 0xFF, 0xFF, 0xFF, TRUE);
-    FreeImage_Save(FIF_JPEG, imageOutBitmap, "images/gpu_cut_image.png", 0);
+    FreeImage_Save(FIF_JPEG, imageOutBitmap, "../images/gpu_cut_image.png", 0);
     FreeImage_Unload(imageOutBitmap);
 
     // cleanup

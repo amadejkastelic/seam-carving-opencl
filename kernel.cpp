@@ -89,35 +89,47 @@ __kernel void sobel(__global unsigned char *image, __global unsigned *edgeImage,
 
     int i = get_global_id(1);
     int j = get_global_id(0);
+    int lSize = get_local_size(0);
+
+    unsigned char paddingValue = (unsigned char) 0;
 
 
-    lImage[18 * (ly + 1) + lx + 1] = image[j * width + i];
+    if (i < width && j < height) {
+        lImage[(lSize + 2) * (ly + 1) + lx + 1] = image[j * width + i];
+    } else {
+        lImage[(lSize + 2) * (ly + 1) + lx + 1] = (unsigned char) 0;
+    }
+
 
     if (lx == 0) {
         if (i == 0) {
-            lImage[18 * (ly + 1) + lx] = (unsigned char) 0;
+            lImage[(lSize + 2) * (ly + 1) + lx] = (unsigned char) 0;
         } else {
-            lImage[18 * (ly + 1) + lx] = image[j * width + i - 1];
+            lImage[(lSize + 2) * (ly + 1) + lx] = image[
+                    j * width
+                    + i - 1];
         }
-    } else if (lx == 15) {
-        if (i == width - 1) {
-            lImage[18 * (ly + 1) + lx + 2] = (unsigned char) 0;
+    } else if (lx == (lSize - 1)) {
+        if (i >= width - 1) {
+            lImage[(lSize + 2) * (ly + 1) + lx + 2] = (unsigned char) 0;
         } else {
-            lImage[18 * (ly + 1) + lx + 2] = image[j * width + i + 1];
+            lImage[(lSize + 2) * (ly + 1) + lx + 2] = image[
+                    j * width
+                    + i + 1];
         }
     }
 
     if (ly == 0) {
         if (j == 0) {
-            lImage[18 * (ly) + lx + 1] = (unsigned char) 0;
+            lImage[(lSize + 2) * (ly) + lx + 1] = (unsigned char) 0;
         } else {
-            lImage[18 * (ly) + lx + 1] = image[(j - 1) * width + i];
+            lImage[(lSize + 2) * (ly) + lx + 1] = image[(j - 1) * width + i];
         }
-    } else if (ly == 15) {
-        if (j == height - 1) {
-            lImage[18 * (ly + 2) + lx + 1] = (unsigned char) 0;
+    } else if (ly == (lSize - 1)) {
+        if (j >= height - 1) {
+            lImage[(lSize + 2) * (ly + 2) + lx + 1] = (unsigned char) 0;
         } else {
-            lImage[18 * (ly + 2) + lx + 1] = image[(j + 1) * width + i];
+            lImage[(lSize + 2) * (ly + 2) + lx + 1] = image[(j + 1) * width + i];
         }
     }
 
@@ -129,62 +141,68 @@ __kernel void sobel(__global unsigned char *image, __global unsigned *edgeImage,
             lImage[0] = image[(j - 1) * width + i - 1];
         }
     }
-    if (lx == 15 && ly == 0) {
+    if (lx == (lSize - 1) && ly == 0) {
         if (j == 0 && i == width - 1) {
-            lImage[17] = (unsigned char) 0;
+            lImage[(lSize + 1)] = (unsigned char) 0;
         } else {
-            lImage[17] = image[(j - 1) * width + i + 1];
+            lImage[(lSize + 1)] = image[(j - 1) * width + i + 1];
         }
     }
-    if (lx == 0 && ly == 15) {
-        if (j == height - 1 && i == 0) {
-            lImage[17 * 18] = (unsigned char) 0;
+    if (lx == 0 && ly == (lSize - 1)) {
+        if (j >= height - 1 && i == 0) {
+            lImage[(lSize + 1) * (lSize + 2)] = (unsigned char) 0;
         } else {
-            lImage[17 * 18] = image[(j + 1) * width + i - 1];
+            lImage[(lSize + 1) * (lSize + 2)] = image[(j + 1) * width + i - 1];
         }
     }
-    if (lx == 15 && ly == 15) {
-        if (j == height - 1 && i == width - 1) {
-            lImage[18 * 18 - 1] = (unsigned char) 0;
+    if (lx == (lSize - 1) && ly == (lSize - 1)) {
+        if (j >= height - 1 && i >= width - 1) {
+            lImage[(lSize + 2) * (lSize + 2) - 1] = (unsigned char) 0;
         } else {
-            lImage[18 * 18 - 1] = image[(j + 1) * width + i + 1];
+            lImage[(lSize + 2) * (lSize + 2) - 1] = image[(j + 1) * width + i + 1];
         }
     }
 
 
     barrier(CLK_LOCAL_MEM_FENCE);
 
-    //edgeImage[(j * width) + i] = lImage[18 * (ly + 1) + lx + 1];
+//edgeImage[(j * width) + i] = lImage[18 * (ly + 1) + lx + 1];
 
     int Gx = 1, Gy = 1;
     int tempPixel;
 
 //za vsak piksel v sliki
-    /*  Gx = -lGetPixel(lImage, 18, 18, ly + 1 - 1, lx + 1 - 1) - 2 * lGetPixel(lImage, 18, 18, ly + 1 - 1, lx + 1) -
-           lGetPixel(lImage, 18, 18, ly + 1 - 1, lx + 1 + 1) + lGetPixel(lImage, 18, 18, ly + 1 + 1, lx + 1 - 1) +
-           2 * lGetPixel(lImage, 18, 18, ly + 1 + 1, lx + 1) + lGetPixel(lImage, 18, 18, ly + 1 + 1, lx + 1 + 1);
-      Gy = -lGetPixel(lImage, 18, 18, ly + 1 - 1, lx + 1 - 1) - 2 * lGetPixel(lImage, 18, 18, ly + 1, lx + 1 - 1) -
-           lGetPixel(lImage, 18, 18, ly + 1 + 1, lx + 1 - 1) + lGetPixel(lImage, 18, 18, ly + 1 - 1, lx + 1 + 1) +
-           2 * lGetPixel(lImage, 18, 18, ly + 1, lx + 1 + 1) + lGetPixel(lImage, 18, 18, ly + 1 + 1, lx + 1 + 1);
-  */
+/*  Gx = -lGetPixel(lImage, 18, 18, ly + 1 - 1, lx + 1 - 1) - 2 * lGetPixel(lImage, 18, 18, ly + 1 - 1, lx + 1) -
+       lGetPixel(lImage, 18, 18, ly + 1 - 1, lx + 1 + 1) + lGetPixel(lImage, 18, 18, ly + 1 + 1, lx + 1 - 1) +
+       2 * lGetPixel(lImage, 18, 18, ly + 1 + 1, lx + 1) + lGetPixel(lImage, 18, 18, ly + 1 + 1, lx + 1 + 1);
+  Gy = -lGetPixel(lImage, 18, 18, ly + 1 - 1, lx + 1 - 1) - 2 * lGetPixel(lImage, 18, 18, ly + 1, lx + 1 - 1) -
+       lGetPixel(lImage, 18, 18, ly + 1 + 1, lx + 1 - 1) + lGetPixel(lImage, 18, 18, ly + 1 - 1, lx + 1 + 1) +
+       2 * lGetPixel(lImage, 18, 18, ly + 1, lx + 1 + 1) + lGetPixel(lImage, 18, 18, ly + 1 + 1, lx + 1 + 1);
+*/
 
 //za vsak piksel v sliki
-    Gx = -lImage[lx + 18 * (ly)] - 2 * lImage[lx + 18 * (ly + 1)] - lImage[lx + 18 * (ly + 2)] +
-         lImage[lx + 2 + 18 * (ly)] + 2 * lImage[lx + 2 + 18 * (ly + 1)] + lImage[lx + 2 + 18 * (ly + 2)];
+    Gx = -lImage[lx + (lSize + 2) * (ly)] - 2 * lImage[lx + (lSize + 2) * (ly + 1)] -
+         lImage[lx + (lSize + 2) * (ly + 2)] +
+         lImage[lx + 2 + (lSize + 2) * (ly)] + 2 * lImage[lx + 2 + (lSize + 2) * (ly + 1)] +
+         lImage[lx + 2 + (lSize + 2) * (ly + 2)];
 
-    Gy = -lImage[lx + 18 * (ly)] - 2 * lImage[lx + 1 + 18 * (ly)] - lImage[lx + 2 + 18 * (ly)] +
-         lImage[lx + 18 * (ly + 2)] + 2 * lImage[lx + 1 + 18 * (ly + 2)] + lImage[lx + 2 + 18 * (ly + 2)];
+    Gy = -lImage[lx + (lSize + 2) * (ly)] - 2 * lImage[lx + 1 + (lSize + 2) * (ly)] -
+         lImage[lx + 2 + (lSize + 2) * (ly)] +
+         lImage[lx + (lSize + 2) * (ly + 2)] + 2 * lImage[lx + 1 + (lSize + 2) * (ly + 2)] +
+         lImage[lx + 2 + (lSize + 2) * (ly + 2)];
 
-    tempPixel = abs(Gx) + abs(Gy);
-    if (tempPixel > 255)
-        edgeImage[
-                j * width
-                + i] = 255;
-    else
-        edgeImage[
-                j * width
-                + i] =
-                tempPixel;
+    tempPixel = (unsigned) sqrt((float) (Gx * Gx + Gy * Gy));
+    //tempPixel = lImage[lx + 1 + (lSize + 2) * (ly + 1)];
+
+
+//tempPixel = abs(Gx) + abs(Gy);
+    if(i < width && j < height) {
+        if (tempPixel > 255) {
+            edgeImage[j * width + i] = 255;
+        } else {
+            edgeImage[j * width + i] = tempPixel;
+        }
+    }
 }
 
 /**
@@ -215,7 +233,7 @@ cumulativeTrapezoid1(__global unsigned *cumulative, __local unsigned *cache, int
     int j = get_global_id(1);
 
     // calculate correct ids
-    int globalI = i + numGroup * get_local_size(0);
+    int globalI = i + numGroup * get_global_size(0);
     int globalJ = j + get_group_id(1) * get_local_size(1);
 
     int y = get_local_id(0);
@@ -278,7 +296,7 @@ cumulativeTrapezoid2(__global unsigned *cumulative, __local unsigned *cache, int
     int j = get_global_id(1); // 0 : width/2
 
     // calculate correct ids
-    int globalI = i + numGroup * get_local_size(0); //0-- height
+    int globalI = i + numGroup * get_global_size(0); //0-- height
     int globalJ = j + (get_group_id(1) + 1) * get_local_size(1); // 0 - width
 
     int y = get_local_id(0);  //0:15
@@ -293,7 +311,7 @@ cumulativeTrapezoid2(__global unsigned *cumulative, __local unsigned *cache, int
     if (x == 0 && y == 0) {
         for (int k = 0; k < cacheHeight+1; k++) {
             for (int l = 0; l < localCacheWidth; l++) {
-                cache[k * localCacheWidth + l] = getPixelUnsigned(cumulative, width, height, globalI+k, globalJ + l-(cacheHeight/2)-1, UINT_MAX);
+                cache[k*localCacheWidth + l] = getPixelUnsigned(cumulative, width, height, globalI+k, globalJ + l-(cacheHeight/2)-1, UINT_MAX);
             }
         }
     }
@@ -337,7 +355,7 @@ cumulativeTrapezoid2(__global unsigned *cumulative, __local unsigned *cache, int
     }*/
 
     for (int k = cacheHeight - 1; k >= 0; k--) {
-        if (y == k && globalI < height - 1 && globalJ < width) {
+        if (y == k && globalI < height-1 && globalJ < width) {
             /*cumulative[globalIndex] += minimum(
                     getPixelUnsigned(cumulative, width, height, globalI + 1, globalJ - 1, UINT_MAX),
                     getPixelUnsigned(cumulative, width, height, globalI + 1, globalJ, UINT_MAX),
