@@ -5,11 +5,12 @@
 
 #define MAX_SOURCE_SIZE    16384*2
 #define WORKGROUP_SIZE 32
+#define TRAPEZOID_HEIGHT 29
 // path to image
 #define IMAGE_PATH "../images/image3.png"
 // wanted image size
 #define DESIRED_WIDTH 2000
-#define DESIRED_HEIGHT 1500
+#define DESIRED_HEIGHT 2000
 // debug mode
 #define DEBUG 0
 
@@ -167,8 +168,8 @@ void resizeImageParallel(const char *imagePath) {
         local_size[1] = WORKGROUP_SIZE;
         num_groups[0] = (size_t) ceil((double) height / local_size[0]);
         num_groups[1] = (size_t) ceil((double) width / local_size[1]);
-        global_size[0] = local_size[0] * num_groups[0];
-        global_size[1] = local_size[1] * num_groups[1];
+        global_size[0] = height;
+        global_size[1] = width;
 
         // set kernel args
         ret = clSetKernelArg(sobelKernel, 0, sizeof(cl_mem), (void *) &gray_mem_obj);
@@ -179,12 +180,11 @@ void resizeImageParallel(const char *imagePath) {
 
         // run kernel
         ret = clEnqueueNDRangeKernel(command_queue, sobelKernel, 2, NULL, global_size, local_size, 0, NULL, NULL);
-        printf("%d\n", ret);
 
         // wait for sobel to finish
         clFinish(command_queue);
 
-        if (DEBUG == 0 && i == 20) {
+        if (DEBUG == 0 && i == 0) {
             auto *energy = (unsigned *) malloc(imageSize * sizeof(unsigned));
             ret = clEnqueueReadBuffer(command_queue, energy_mem_obj, CL_TRUE, 0,
                                       imageSize * sizeof(unsigned), energy, 0, NULL, NULL);
@@ -214,17 +214,16 @@ void resizeImageParallel(const char *imagePath) {
             // wait for kernel to finish
             clFinish(command_queue);
         }*/
-        size_t trapezHeight = 29;
-        local_size[0] = trapezHeight;
+        local_size[0] = TRAPEZOID_HEIGHT;
         local_size[1] = WORKGROUP_SIZE;
-        global_size[0] = trapezHeight;
+        global_size[0] = TRAPEZOID_HEIGHT;
         global_size[1] = nearestMultipleOf(width / 2, WORKGROUP_SIZE);
 
         size_t offset[2] = {0, WORKGROUP_SIZE};
 
         //printf("all set\n");
 
-        for (row = nearestMultipleOf(height, trapezHeight) / trapezHeight - 1; row >= 0; row--) {
+        for (row = nearestMultipleOf(height, TRAPEZOID_HEIGHT) / TRAPEZOID_HEIGHT - 1; row >= 0; row--) {
             ret = clSetKernelArg(trapezoid2CumulativeKernel, 0, sizeof(cl_mem), &energy_mem_obj);
             ret |= clSetKernelArg(trapezoid2CumulativeKernel, 1, ((local_size[0]+1) * (local_size[1]+2*(local_size[0]/2+1))) * sizeof(unsigned), NULL);
             ret |= clSetKernelArg(trapezoid2CumulativeKernel, 2, sizeof(int), &width);
@@ -234,7 +233,6 @@ void resizeImageParallel(const char *imagePath) {
             // run kernel
             ret = clEnqueueNDRangeKernel(command_queue, trapezoid2CumulativeKernel, 2, NULL,
                     global_size, local_size, 0, NULL, NULL);
-            printf("%d\n", ret);
 
             // wait for kernel to finish
             clFinish(command_queue);
@@ -248,7 +246,7 @@ void resizeImageParallel(const char *imagePath) {
             // run kernel
             ret = clEnqueueNDRangeKernel(command_queue, trapezoid1CumulativeKernel, 2, NULL,
                                          global_size, local_size, 0, NULL, NULL);
-            printf("%d\n", ret);
+            //printf("%d\n", ret);
 
             // wait for kernel to finish
             clFinish(command_queue);
@@ -287,7 +285,6 @@ void resizeImageParallel(const char *imagePath) {
 
         // run kernel
         ret = clEnqueueNDRangeKernel(command_queue, findMinKernel, 1, NULL, &globalSize, &localSize, 0, NULL, NULL);
-        printf("%d\n", ret);
 
         // wait for kernel to finish
         clFinish(command_queue);
@@ -463,15 +460,14 @@ void resizeImageParallel(const char *imagePath) {
                 clFinish(command_queue);
             }*/
 
-            size_t trapezHeight = 29;
-            local_size[0] = trapezHeight;
+            local_size[0] = TRAPEZOID_HEIGHT;
             local_size[1] = WORKGROUP_SIZE;
-            global_size[0] = trapezHeight;
+            global_size[0] = TRAPEZOID_HEIGHT;
             global_size[1] = nearestMultipleOf(width / 2, WORKGROUP_SIZE);
 
             size_t offset[2] = {0, WORKGROUP_SIZE};
 
-            for (row = nearestMultipleOf(height, trapezHeight) / trapezHeight - 1; row >= 0; row--) {
+            for (row = nearestMultipleOf(height, TRAPEZOID_HEIGHT) / TRAPEZOID_HEIGHT - 1; row >= 0; row--) {
                 ret = clSetKernelArg(trapezoid2CumulativeKernel, 0, sizeof(cl_mem), &energy_mem_obj);
                 ret |= clSetKernelArg(trapezoid2CumulativeKernel, 1, ((local_size[0]+1) * (local_size[1]+2*(local_size[0]/2+1))) * sizeof(unsigned), NULL);
                 ret |= clSetKernelArg(trapezoid2CumulativeKernel, 2, sizeof(int), &width);

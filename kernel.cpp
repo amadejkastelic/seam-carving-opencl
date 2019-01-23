@@ -79,131 +79,63 @@ inline int indexOfMin(__global unsigned *image, int width, int height, int y, in
  * @param width Image width.
  * @param height Image height.
  */
-__kernel void sobel(__global unsigned char *image, __global unsigned *edgeImage,
-                    __local unsigned char *lImage, int width, int height) {
-    //__local unsigned char lImage[18 * 18];
-    int gx = get_group_id(1);
-    int gy = get_group_id(0);
-    int lx = get_local_id(1);
-    int ly = get_local_id(0);
+__kernel void sobel(__global unsigned char *imageIn, __global unsigned *imageOut,
+                    __local unsigned char *cached, int width, int height) {
+    int i = get_global_id(0);
+    int j = get_global_id(1);
 
-    int i = get_global_id(1);
-    int j = get_global_id(0);
-    int lSize = get_local_size(0);
-
-    unsigned char paddingValue = (unsigned char) 0;
-
-
-    if (i < width && j < height) {
-        lImage[(lSize + 2) * (ly + 1) + lx + 1] = image[j * width + i];
-    } else {
-        lImage[(lSize + 2) * (ly + 1) + lx + 1] = (unsigned char) 0;
+    if (i >= height || j >= width) {
+        return;
     }
 
+    // save all to local memory
+    int y = get_local_id(0);
+    int x = get_local_id(1);
 
-    if (lx == 0) {
-        if (i == 0) {
-            lImage[(lSize + 2) * (ly + 1) + lx] = (unsigned char) 0;
-        } else {
-            lImage[(lSize + 2) * (ly + 1) + lx] = image[
-                    j * width
-                    + i - 1];
-        }
-    } else if (lx == (lSize - 1)) {
-        if (i >= width - 1) {
-            lImage[(lSize + 2) * (ly + 1) + lx + 2] = (unsigned char) 0;
-        } else {
-            lImage[(lSize + 2) * (ly + 1) + lx + 2] = image[
-                    j * width
-                    + i + 1];
-        }
-    }
+    int cacheHeight = get_local_size(0);
+    int cacheWidth = get_local_size(1);
 
-    if (ly == 0) {
-        if (j == 0) {
-            lImage[(lSize + 2) * (ly) + lx + 1] = (unsigned char) 0;
-        } else {
-            lImage[(lSize + 2) * (ly) + lx + 1] = image[(j - 1) * width + i];
-        }
-    } else if (ly == (lSize - 1)) {
-        if (j >= height - 1) {
-            lImage[(lSize + 2) * (ly + 2) + lx + 1] = (unsigned char) 0;
-        } else {
-            lImage[(lSize + 2) * (ly + 2) + lx + 1] = image[(j + 1) * width + i];
-        }
-    }
+    int index = y * cacheWidth + x;
 
+    cached[index] = getPixel(imageIn, width, height, i, j, 0);
 
-    if (lx == 0 && ly == 0) {
-        if (j == 0 && i == 0) {
-            lImage[0] = (unsigned char) 0;
-        } else {
-            lImage[0] = image[(j - 1) * width + i - 1];
-        }
+    if (y == cacheHeight) {
+        cached[(y+1) * cacheWidth + x] = getPixel(imageIn, width, height, y+1, x, 0);
     }
-    if (lx == (lSize - 1) && ly == 0) {
-        if (j == 0 && i == width - 1) {
-            lImage[(lSize + 1)] = (unsigned char) 0;
-        } else {
-            lImage[(lSize + 1)] = image[(j - 1) * width + i + 1];
-        }
+    if (x == cacheWidth) {
+        cached[index + 1] = getPixel(imageIn, width, height, y, x+1, 0);
     }
-    if (lx == 0 && ly == (lSize - 1)) {
-        if (j >= height - 1 && i == 0) {
-            lImage[(lSize + 1) * (lSize + 2)] = (unsigned char) 0;
-        } else {
-            lImage[(lSize + 1) * (lSize + 2)] = image[(j + 1) * width + i - 1];
-        }
+    if (y == cacheHeight && x == cacheWidth) {
+        cached[(y+1) * cacheWidth + x + 1] = getPixel(imageIn, width, height, y+1, x+1, 0);
     }
-    if (lx == (lSize - 1) && ly == (lSize - 1)) {
-        if (j >= height - 1 && i >= width - 1) {
-            lImage[(lSize + 2) * (lSize + 2) - 1] = (unsigned char) 0;
-        } else {
-            lImage[(lSize + 2) * (lSize + 2) - 1] = image[(j + 1) * width + i + 1];
-        }
-    }
-
 
     barrier(CLK_LOCAL_MEM_FENCE);
 
-//edgeImage[(j * width) + i] = lImage[18 * (ly + 1) + lx + 1];
-
-    int Gx = 1, Gy = 1;
+    int Gx, Gy;
     int tempPixel;
 
-//za vsak piksel v sliki
-/*  Gx = -lGetPixel(lImage, 18, 18, ly + 1 - 1, lx + 1 - 1) - 2 * lGetPixel(lImage, 18, 18, ly + 1 - 1, lx + 1) -
-       lGetPixel(lImage, 18, 18, ly + 1 - 1, lx + 1 + 1) + lGetPixel(lImage, 18, 18, ly + 1 + 1, lx + 1 - 1) +
-       2 * lGetPixel(lImage, 18, 18, ly + 1 + 1, lx + 1) + lGetPixel(lImage, 18, 18, ly + 1 + 1, lx + 1 + 1);
-  Gy = -lGetPixel(lImage, 18, 18, ly + 1 - 1, lx + 1 - 1) - 2 * lGetPixel(lImage, 18, 18, ly + 1, lx + 1 - 1) -
-       lGetPixel(lImage, 18, 18, ly + 1 + 1, lx + 1 - 1) + lGetPixel(lImage, 18, 18, ly + 1 - 1, lx + 1 + 1) +
-       2 * lGetPixel(lImage, 18, 18, ly + 1, lx + 1 + 1) + lGetPixel(lImage, 18, 18, ly + 1 + 1, lx + 1 + 1);
-*/
+    Gx = -getCachedPixel(cached, cacheWidth, cacheHeight, y - 1, x - 1, imageIn, width, height, i - 1, j - 1) -
+         2 * getCachedPixel(cached, cacheWidth, cacheHeight, y - 1, x, imageIn, width, height, i - 1, j) -
+         getCachedPixel(cached, cacheWidth, cacheHeight, y - 1, x + 1, imageIn, width, height, i - 1, j + 1) +
+         getCachedPixel(cached, cacheWidth, cacheHeight, y + 1, x - 1, imageIn, width, height, i + 1, j - 1) +
+         2 * getCachedPixel(cached, cacheWidth, cacheHeight, y + 1, x, imageIn, width, height, i + 1, j) +
+         getCachedPixel(cached, cacheWidth, cacheHeight, y + 1, x + 1, imageIn, width, height, i + 1, j + 1);
 
-//za vsak piksel v sliki
-    Gx = -lImage[lx + (lSize + 2) * (ly)] - 2 * lImage[lx + (lSize + 2) * (ly + 1)] -
-         lImage[lx + (lSize + 2) * (ly + 2)] +
-         lImage[lx + 2 + (lSize + 2) * (ly)] + 2 * lImage[lx + 2 + (lSize + 2) * (ly + 1)] +
-         lImage[lx + 2 + (lSize + 2) * (ly + 2)];
+    Gy = -getCachedPixel(cached, cacheWidth, cacheHeight, y - 1, x - 1, imageIn, width, height, i - 1, j - 1) -
+         2 * getCachedPixel(cached, cacheWidth, cacheHeight, y, x - 1, imageIn, width, height, i, j - 1) -
+         getCachedPixel(cached, cacheWidth, cacheHeight, y + 1, x - 1, imageIn, width, height, i + 1, j - 1) +
+         getCachedPixel(cached, cacheWidth, cacheHeight, y - 1, x + 1, imageIn, width, height, i - 1, j + 1) +
+         2 * getCachedPixel(cached, cacheWidth, cacheHeight, y, x + 1, imageIn, width, height, i, j + 1) +
+         getCachedPixel(cached, cacheWidth, cacheHeight, y + 1, x + 1, imageIn, width, height, i + 1, j + 1);
 
-    Gy = -lImage[lx + (lSize + 2) * (ly)] - 2 * lImage[lx + 1 + (lSize + 2) * (ly)] -
-         lImage[lx + 2 + (lSize + 2) * (ly)] +
-         lImage[lx + (lSize + 2) * (ly + 2)] + 2 * lImage[lx + 1 + (lSize + 2) * (ly + 2)] +
-         lImage[lx + 2 + (lSize + 2) * (ly + 2)];
-
-    tempPixel = (unsigned) sqrt((float) (Gx * Gx + Gy * Gy));
-    //tempPixel = lImage[lx + 1 + (lSize + 2) * (ly + 1)];
-
-
-//tempPixel = abs(Gx) + abs(Gy);
-    if(i < width && j < height) {
-        if (tempPixel > 255) {
-            edgeImage[j * width + i] = 255;
-        } else {
-            edgeImage[j * width + i] = tempPixel;
-        }
+    tempPixel = sqrt((float) (Gx * Gx + Gy * Gy));
+    if (tempPixel > 255) {
+        imageOut[i * width + j] = 255;
+    } else {
+        imageOut[i * width + j] = tempPixel;
     }
 }
+
 
 /**
  * Calculate cumulative of energy.
@@ -243,7 +175,7 @@ cumulativeTrapezoid1(__global unsigned *cumulative, __local unsigned *cache, int
     int cacheWidth = get_local_size(1);
     int localCacheWidth = cacheWidth + 2*(cacheHeight/2)+2;
 
-    if (x == 0 && y == 0) {
+    /*if (x == 0 && y == 0) {
         for (int k = 0; k < cacheHeight+1; k++) {
             for (int l = 0; l < localCacheWidth; l++) {
                 cache[k*localCacheWidth + l] = getPixelUnsigned(cumulative, width, height, globalI+k, globalJ + l-(cacheHeight/2)-1, UINT_MAX);
@@ -251,7 +183,7 @@ cumulativeTrapezoid1(__global unsigned *cumulative, __local unsigned *cache, int
         }
     }
 
-    barrier(CLK_LOCAL_MEM_FENCE);
+    barrier(CLK_LOCAL_MEM_FENCE);*/
 
     // mirror thread indexes
     if (get_group_id(1) != 0 && y - x > cacheHeight / 2.0f - 0) {
@@ -292,18 +224,18 @@ cumulativeTrapezoid1(__global unsigned *cumulative, __local unsigned *cache, int
                     getPixelUnsigned(cumulative, width, height, globalI + 1, globalJ, UINT_MAX),
                     getPixelUnsigned(cumulative, width, height, globalI + 1, globalJ + 1, UINT_MAX)
             );*/
-            cache[localIndex] += minimum(
+            cumulative[globalIndex] += minimum(
                     getCachedPixelUnsigned(cache, y + 1, x - 1, localCacheWidth, cacheHeight),
                     getCachedPixelUnsigned(cache, y +1, x, localCacheWidth, cacheHeight),
                     getCachedPixelUnsigned(cache, y + 1, x + 1, localCacheWidth, cacheHeight)
             );
         }
-        barrier(CLK_LOCAL_MEM_FENCE); // shouldn't it be local??
+        barrier(CLK_GLOBAL_MEM_FENCE); // shouldn't it be local??
     }
 
-    if (globalI < height && globalJ < width) {
+    /*if (globalI < height && globalJ < width) {
         cumulative[globalIndex] = cache[localIndex];
-    }
+    }*/
 }
 
 __kernel void
@@ -325,7 +257,7 @@ cumulativeTrapezoid2(__global unsigned *cumulative, __local unsigned *cache, int
     //printf("c%d\n", localCacheWidth);
 
     //copy data to local memory
-    if (x == 0 && y == 0) {
+    /*if (x == 0 && y == 0) {
         for (int k = 0; k < cacheHeight+1; k++) {
             for (int l = 0; l < localCacheWidth; l++) {
                 cache[k*localCacheWidth + l] = getPixelUnsigned(cumulative, width, height, globalI+k, globalJ + l-(cacheHeight/2)-1, UINT_MAX);
@@ -333,7 +265,7 @@ cumulativeTrapezoid2(__global unsigned *cumulative, __local unsigned *cache, int
         }
     }
 
-    barrier(CLK_LOCAL_MEM_FENCE);
+    barrier(CLK_LOCAL_MEM_FENCE);*/
 
     // mirror thread indexes
     if (y + x <= cacheHeight / 2.0f - 1) {
@@ -378,18 +310,18 @@ cumulativeTrapezoid2(__global unsigned *cumulative, __local unsigned *cache, int
                     getPixelUnsigned(cumulative, width, height, globalI + 1, globalJ, UINT_MAX),
                     getPixelUnsigned(cumulative, width, height, globalI + 1, globalJ + 1, UINT_MAX)
             );*/
-            cache[localIndex] += minimum(
+            cumulative[globalIndex] += minimum(
                     getCachedPixelUnsigned(cache, y + 1, x - 1, localCacheWidth, cacheHeight),
                     getCachedPixelUnsigned(cache, y +1, x, localCacheWidth, cacheHeight),
                     getCachedPixelUnsigned(cache, y + 1, x + 1, localCacheWidth, cacheHeight)
             );
         }
-        barrier(CLK_LOCAL_MEM_FENCE); // shouldn't it be local??
+        barrier(CLK_GLOBAL_MEM_FENCE); // shouldn't it be local??
     }
 
-    if (globalI < height && globalJ < width) {
+    /*if (globalI < height && globalJ < width) {
         cumulative[globalIndex] = cache[localIndex];
-    }
+    }*/
 }
 
 /**
