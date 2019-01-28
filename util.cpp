@@ -93,3 +93,7 @@ int nearestPower(int num) {
 unsigned nearestMultipleOf(unsigned num, int multiple) {
     return ((num + multiple - 1) / multiple) * multiple;
 }
+
+double getTime(timespec *start, timespec *finish) {
+    return ((finish->tv_sec - start->tv_sec) + (finish->tv_nsec - start->tv_nsec) / 1000000000.0);
+}

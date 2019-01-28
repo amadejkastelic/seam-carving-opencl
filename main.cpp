@@ -7,10 +7,10 @@
 #define WORKGROUP_SIZE 32
 #define TRAPEZOID_HEIGHT 29
 // path to image
-#define IMAGE_PATH "../images/image.jpg"
+#define IMAGE_PATH "../images/grad.jpeg"
 // wanted image size
-#define DESIRED_WIDTH 400
-#define DESIRED_HEIGHT 800
+#define DESIRED_WIDTH 900
+#define DESIRED_HEIGHT 813
 // debug mode
 #define DEBUG 0
 
@@ -28,8 +28,9 @@ void resizeImageParallel(const char *imagePath) {
     unsigned char *imageGray, *imageRGB;
     unsigned width, height, pitchGray, pitchRGB, imageSize, globalWidth, globalHeight;
     int i, row;
-    double elapsed;
-    struct timespec start{}, finish{};
+    double elapsed, elapsedSobel, elapsedCumulative, elapsedTrapezoid, elapsedFindSeam, elapsedDeleteSeam, elapsedTranspose;
+    struct timespec start{}, finish{}, startSobel{}, endSobel{}, startCumulative{}, endCumulative{}, startTrapezoid{},
+            endTrapezoid{}, startFindSeam{}, endFindSeam{}, startDeleteSeam{}, endDeleteSeam{}, startTranspose{}, endTranspose{};
     cl_int ret;
 
     // read image
@@ -162,6 +163,7 @@ void resizeImageParallel(const char *imagePath) {
         /**
          * SOBEL
          */
+        clock_gettime(CLOCK_MONOTONIC, &startSobel);
         // group sizes
         local_size[0] = WORKGROUP_SIZE;
         local_size[1] = WORKGROUP_SIZE;
@@ -181,23 +183,18 @@ void resizeImageParallel(const char *imagePath) {
         // wait for sobel to finish
         clFinish(command_queue);
 
-        /*if (DEBUG == 0 && i == 0) {
-            auto *energy = (unsigned *) malloc(imageSize * sizeof(unsigned));
-            ret = clEnqueueReadBuffer(command_queue, energy_mem_obj, CL_TRUE, 0,
-                                      imageSize * sizeof(unsigned), energy, 0, NULL, NULL);
-            saveUnsignedImage(energy, width, height, "../images/sobel_gpu_image2.png");
-            free(energy);
-        }*/
+        clock_gettime(CLOCK_MONOTONIC, &endSobel);
 
         /**
          * CUMULATIVE
          */
         // group sizes
-        localSize = WORKGROUP_SIZE;
+        /*localSize = WORKGROUP_SIZE;
         globalSize = nearestMultipleOf(width, WORKGROUP_SIZE);
 
         // calculation
-        /*for (row = height - 2; row >= 0; row--) {
+        clock_gettime(CLOCK_MONOTONIC, &startCumulative);
+        for (row = height - 2; row >= 0; row--) {
             // set kernel args
             ret = clSetKernelArg(cumulativeBasicKernel, 0, sizeof(cl_mem), &energy_mem_obj);
             ret |= clSetKernelArg(cumulativeBasicKernel, 1, sizeof(int), &width);
@@ -210,7 +207,9 @@ void resizeImageParallel(const char *imagePath) {
 
             // wait for kernel to finish
             clFinish(command_queue);
-        }*/
+        }
+        clock_gettime(CLOCK_MONOTONIC, &endCumulative);*/
+
         local_size[0] = TRAPEZOID_HEIGHT;
         local_size[1] = WORKGROUP_SIZE;
         global_size[0] = TRAPEZOID_HEIGHT;
@@ -220,6 +219,7 @@ void resizeImageParallel(const char *imagePath) {
 
         //printf("all set\n");
 
+        clock_gettime(CLOCK_MONOTONIC, &startTrapezoid);
         for (row = nearestMultipleOf(height, TRAPEZOID_HEIGHT) / TRAPEZOID_HEIGHT - 1; row >= 0; row--) {
             ret = clSetKernelArg(trapezoid2CumulativeKernel, 0, sizeof(cl_mem), &energy_mem_obj);
             ret |= clSetKernelArg(trapezoid2CumulativeKernel, 1, (WORKGROUP_SIZE + TRAPEZOID_HEIGHT/2*2 + 2) * (TRAPEZOID_HEIGHT+1) * sizeof(unsigned), NULL);
@@ -248,6 +248,7 @@ void resizeImageParallel(const char *imagePath) {
             // wait for kernel to finish
             clFinish(command_queue);
         }
+        clock_gettime(CLOCK_MONOTONIC, &endTrapezoid);
         /*if (i == 0) {
             auto *energy = (unsigned *) malloc(imageSize * sizeof(unsigned));
             ret = clEnqueueReadBuffer(command_queue, energy_mem_obj, CL_TRUE, 0,
@@ -261,6 +262,7 @@ void resizeImageParallel(const char *imagePath) {
          * FIND SEAM - Part 1
          * Find min in top row - REDUCTION
          */
+        clock_gettime(CLOCK_MONOTONIC, &startFindSeam);
         // group sizes
         localSize = WORKGROUP_SIZE;
         numGroups = (size_t) ceil((double) width / localSize);
@@ -317,6 +319,7 @@ void resizeImageParallel(const char *imagePath) {
 
         // wait for kernel to finish
         clFinish(command_queue);
+        clock_gettime(CLOCK_MONOTONIC, &endFindSeam);
 
         /*auto *backtrack = (int *) malloc(height * sizeof(unsigned));
         ret = clEnqueueReadBuffer(command_queue, backtrack_mem_obj, CL_TRUE, 0,
@@ -330,6 +333,7 @@ void resizeImageParallel(const char *imagePath) {
         /**
          * DELETE SEAM
          */
+        clock_gettime(CLOCK_MONOTONIC, &startDeleteSeam);
         // group sizes - same as sobel
         local_size[0] = WORKGROUP_SIZE;
         local_size[1] = WORKGROUP_SIZE;
@@ -365,10 +369,8 @@ void resizeImageParallel(const char *imagePath) {
         clEnqueueCopyBuffer(command_queue, RGB_copy_mem_obj, RGB_mem_obj, 0, 0,
                             width * height * 3 * sizeof(unsigned char), 0, NULL, NULL);
         clFinish(command_queue);
-
-        //printf("%d", width);
+        clock_gettime(CLOCK_MONOTONIC, &endDeleteSeam);
     }
-    printf("rotating\n");
     if (DESIRED_WIDTH >= globalWidth) {
         clEnqueueCopyBuffer(command_queue, gray_mem_obj, gray_copy_mem_obj, 0, 0,
                             width * height * sizeof(unsigned char), 0, NULL, NULL);
@@ -376,11 +378,11 @@ void resizeImageParallel(const char *imagePath) {
                             width * height * 3 * sizeof(unsigned char), 0, NULL, NULL);
         clFinish(command_queue);
     }
-    printf("resizing again\n");
     if (DESIRED_HEIGHT < globalHeight) {
         /**
          * IMAGE ROTATION
          */
+        clock_gettime(CLOCK_MONOTONIC, &startTranspose);
         // group sizes
         local_size[0] = WORKGROUP_SIZE;
         local_size[1] = WORKGROUP_SIZE;
@@ -402,6 +404,8 @@ void resizeImageParallel(const char *imagePath) {
 
         // wait for rotation to finish
         clFinish(command_queue);
+
+        clock_gettime(CLOCK_MONOTONIC, &endTranspose);
 
         unsigned temp = height;
         height = width;
@@ -561,7 +565,7 @@ void resizeImageParallel(const char *imagePath) {
             // wait for kernel to finish
             clFinish(command_queue);
 
-            if (DEBUG == 1 && i == 1) {
+            /*if (DEBUG == 1 && i == 1) {
                 auto *backtrack = (int *) malloc(height * sizeof(unsigned));
                 ret = clEnqueueReadBuffer(command_queue, backtrack_mem_obj, CL_TRUE, 0,
                                           height * sizeof(unsigned), backtrack, 0, NULL, NULL);
@@ -569,7 +573,7 @@ void resizeImageParallel(const char *imagePath) {
                     printf("%d, ", backtrack[j]);
                 }
                 free(backtrack);
-            }
+            }*/
 
             /**
              * DELETE SEAM
@@ -652,13 +656,26 @@ void resizeImageParallel(const char *imagePath) {
 
     // stop measuring time
     clock_gettime(CLOCK_MONOTONIC, &finish);
-    elapsed = (finish.tv_sec - start.tv_sec);
-    elapsed += (finish.tv_nsec - start.tv_nsec) / 1000000000.0;
+    elapsed = getTime(&start, &finish);
+    elapsedSobel = getTime(&startSobel, &endSobel);
+    elapsedCumulative = getTime(&startCumulative, &endCumulative);
+    elapsedTrapezoid = getTime(&startTrapezoid, &endTrapezoid);
+    elapsedFindSeam = getTime(&startFindSeam, &endFindSeam);
+    elapsedDeleteSeam = getTime(&startDeleteSeam, &endDeleteSeam);
+    elapsedTranspose = getTime(&startTranspose, &endTranspose);
+
+
 
     // print results
     printf("GPU:\n");
     printf("Resized image from %dx%d to %dx%d.\n", globalWidth, globalHeight, width, height);
-    printf("Calculation time: %f.\n\n", elapsed);
+    printf("Calculation time: %f.\n", elapsed);
+    printf("Sobel: %f.\n", elapsedSobel);
+    printf("Cumulative basic: %f.\n", elapsedCumulative);
+    printf("Cumulative trapezoid: %f.\n", elapsedTrapezoid);
+    printf("Find seam: %f.\n", elapsedFindSeam);
+    printf("Delete seam: %f.\n", elapsedDeleteSeam);
+    printf("Transpose: %f.\n", elapsedTranspose);
 
     // save resized image
     FIBITMAP *imageOutBitmap = FreeImage_ConvertFromRawBits(imageRGB, width,
@@ -694,8 +711,9 @@ void resizeImageSerial(const char *imagePath) {
     unsigned *energy;
     unsigned width, height, pitchGray, pitchRGB, imageSize, globalWidth, globalHeight;
     int *backtrack, i;
-    double elapsed;
-    struct timespec start{}, finish{};
+    double elapsed, elapsedSobel, elapsedCumulative, elapsedFindSeam, elapsedDeleteSeam, elapsedTranspose;
+    struct timespec start{}, finish{}, startSobel{}, endSobel{}, startCumulative{}, endCumulative{}, startFindSeam{},
+            endFindSeam{}, startDeleteSeam{}, endDeleteSeam{}, startTranspose{}, endTranspose{};
 
     // run tests
     /*if (test() != 0) {
@@ -738,17 +756,28 @@ void resizeImageSerial(const char *imagePath) {
 
     backtrack = (int *) malloc(height * sizeof(int));
     for (i = 0; i < (globalWidth - DESIRED_WIDTH); i++) {
-
+        clock_gettime(CLOCK_MONOTONIC, &startSobel);
         sobelCPU(imageGray, energy, width, height);
+        clock_gettime(CLOCK_MONOTONIC, &endSobel);
+
+        clock_gettime(CLOCK_MONOTONIC, &startCumulative);
         cumulativeCPU(energy, width, height);
+        clock_gettime(CLOCK_MONOTONIC, &endCumulative);
+
+        clock_gettime(CLOCK_MONOTONIC, &startFindSeam);
         findSeam(energy, backtrack, width, height);
+        clock_gettime(CLOCK_MONOTONIC, &endFindSeam);
+
+        clock_gettime(CLOCK_MONOTONIC, &startDeleteSeam);
         deleteSeam(imageGray, imageRGB, backtrack, width, height);
+        clock_gettime(CLOCK_MONOTONIC, &endDeleteSeam);
         width--;
     }
     free(backtrack);
 
     if (DESIRED_HEIGHT < globalHeight) {
         // rotate images
+        clock_gettime(CLOCK_MONOTONIC, &startTranspose);
         FIBITMAP *rotatedGrayImage = FreeImage_ConvertFromRawBits(imageGray, width,
                                                                   height, width, 8, 0xFF, 0xFF, 0xFF, TRUE);
         FIBITMAP *rotatedRBGImage = FreeImage_ConvertFromRawBits(imageRGB, width,
@@ -761,6 +790,8 @@ void resizeImageSerial(const char *imagePath) {
                                    0xFF, 0xFF, 0xFF, TRUE);
         FreeImage_ConvertToRawBits(imageRGB, rotatedRBGImage, height * 3, 24,
                                    0xFF, 0xFF, 0xFF, TRUE);
+
+        clock_gettime(CLOCK_MONOTONIC, &endTranspose);
 
         // find and delete seams (height)
         backtrack = (int *) malloc(width * sizeof(int));
@@ -789,13 +820,22 @@ void resizeImageSerial(const char *imagePath) {
 
     // stop
     clock_gettime(CLOCK_MONOTONIC, &finish);
-    elapsed = (finish.tv_sec - start.tv_sec);
-    elapsed += (finish.tv_nsec - start.tv_nsec) / 1000000000.0;
+    elapsed = getTime(&start, &finish);
+    elapsedSobel = getTime(&startSobel, &endSobel);
+    elapsedCumulative = getTime(&startCumulative, &endCumulative);
+    elapsedFindSeam = getTime(&startFindSeam, &endFindSeam);
+    elapsedDeleteSeam = getTime(&startDeleteSeam, &endDeleteSeam);
+    elapsedTranspose = getTime(&startTranspose, &endTranspose);
 
     // print results
     printf("CPU:\n");
     printf("Resized image from %dx%d to %dx%d.\n", globalWidth, globalHeight, width, height);
     printf("Calculation time: %f.\n", elapsed);
+    printf("Sobel: %f.\n", elapsedSobel);
+    printf("Cumulative basic: %f.\n", elapsedCumulative);
+    printf("Find seam: %f.\n", elapsedFindSeam);
+    printf("Delete seam: %f.\n", elapsedDeleteSeam);
+    printf("Transpose: %f.\n", elapsedTranspose);
 
     // free memory
     free(imageGray);

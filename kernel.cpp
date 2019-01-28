@@ -241,7 +241,7 @@ cumulativeTrapezoid1(__global unsigned *cumulative, __local unsigned *cache, int
                     getCachedPixelUnsigned(cache, y + 1, x + 1, localCacheWidth, cacheHeight)
             );
         }
-        barrier(CLK_GLOBAL_MEM_FENCE);
+        barrier(CLK_LOCAL_MEM_FENCE);
     }
 
     if (globalI < height-1 && globalJ < width) {
@@ -307,6 +307,11 @@ cumulativeTrapezoid2(__global unsigned *cumulative, __local unsigned *cache, int
 
     for (k = cacheHeight - 1; k >= 0; k--) {
         if (y == k && globalI < height-1 && globalJ < width) {
+            /*cumulative[globalIndex] += minimum(
+                    getPixelUnsigned(cumulative, width, height, globalI + 1, globalJ - 1, UINT_MAX),
+                    getPixelUnsigned(cumulative, width, height, globalI + 1, globalJ, UINT_MAX),
+                    getPixelUnsigned(cumulative, width, height, globalI + 1, globalJ + 1, UINT_MAX)
+            );*/
             cache[localIndex] += minimum(
                     getCachedPixelUnsigned(cache, y + 1, x - 1, localCacheWidth, cacheHeight),
                     getCachedPixelUnsigned(cache, y +1, x, localCacheWidth, cacheHeight),
@@ -450,11 +455,9 @@ __kernel void deleteSeam(__global unsigned char *gray, __global unsigned char *g
     int index = i * width + j;
     grayCopy[index - chunk] = gray[index];
 
-    if (j < width) {
-        index = i * (width * 3) + (j * 3);
-        for (int k = index; k < index + 3; k++) {
-            RGBCopy[k - (chunk * 3)] = RGB[k];
-        }
+    index = i * (width * 3) + (j * 3);
+    for (int k = index; k < index + 3; k++) {
+        RGBCopy[k - (chunk * 3)] = RGB[k];
     }
 }
 

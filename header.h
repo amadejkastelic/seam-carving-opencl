@@ -47,4 +47,6 @@ int nearestPower(int num);
 
 unsigned nearestMultipleOf(unsigned num, int multiple);
 
+double getTime(timespec *start, timespec *finish);
+
 #endif //SEMINAR_HEADER_H
